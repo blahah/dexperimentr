@@ -3,6 +3,8 @@ dexperimentr
 
 dexperimentr is a collection of tools for automating best-practise RNAseq differential expression workflows.
 
+**Warning!** This is pre-release software. Please don't cry if it doesn't work. Check back soon for the first release.
+
 
 ## Usage
 
