@@ -10,7 +10,7 @@ installed, it is automatically installed from CRAN
 (default) or BioconductoR (if bioconductor=TRUE).
 }
 \examples{
-get_package('gpplot2')
+get_package('ggplot2')
 get_package('EBSeq', bioconductor=TRUE)
 }
 
