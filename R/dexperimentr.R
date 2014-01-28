@@ -1,5 +1,6 @@
 ### Two-way rice vs. echi
 binary_DE_workflow <- function(expression_file,
+                               conditions,
                                annotation_file,
                                GO_mappings_file) {
   ## 0. Import and prepare the data
@@ -7,26 +8,30 @@ binary_DE_workflow <- function(expression_file,
   # load the expression counts file
   expression_data <- read.table(expression_file)
   
-  # name rows with gene IDs
-  rownames <- expression_data[,1]
+  # convert first column to row names if necessary
+  if (conditions < ncol(expression_data)) {
+    # name rows with gene IDs
+    rownames <- expression_data[,1]
+    
+    # convert to matrix, discard old gene id column
+    expression_data <- as.data.frame(expression_data[,-1])
+  } else {
+    expression_data <- as.data.frame(expression_data)
+  }
   
-  # convert to matrix, discard old gene id column
-  expression_data <- as.matrix(expression_data[,-1])
-  
-  ## 1. Define the conditions
-  conditions <- binary_conditions(c(1, 1, 1, 2, 2, 2))
-  
-  ## 2. Count-data quality control
+  ## 1. Count-data quality control
   expression_data <- count_data_QC(expression_data)
   
-  ## 3. Perform differential expression analysis
-  diff_exp_data <- infer_binary_DE(expression_data,
-                                   annotation_file)
+  ## 2. Infer differential expression
+  res <- infer_DE(counts=expression_data, 
+                  conditions=conds, 
+                  annotation_file=annotation_file,
+                  emrounds=25)
   
-  ## 4. Differential expression quality control
-  binary_DE_QC(diff_exp_data)
+  ## 3. DE quality control
+  diff_expression_QC(res, conds)
   
-  ## 5. Gene set enrichment analysis
+  ## 4. Gene set enrichment analysis
   ontology_enrichment(expressiondata = diff_exp_data,
                     mappingsfile = GO_mappings_file,
                     ppcutoff = 0.95,

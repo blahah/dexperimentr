@@ -3,7 +3,7 @@
 \title{Perform the differential expression workflow}
 \usage{
 infer_DE(counts, conditions, annotation_file, method = "EBSeq",
-  plot = FALSE, emrounds = 25, prob_cutoff = 0.95)
+  emrounds = 25, prob_cutoff = 0.95)
 }
 \arguments{
   \item{counts}{data frame of counts with samples as named
@@ -17,11 +17,11 @@ infer_DE(counts, conditions, annotation_file, method = "EBSeq",
   \item{method}{string; the differential expression method
   to use (only 'EBSeq' currently)}
 
-  \item{plot}{logical; if TRUE, diagnostic plots will be
-  produced}
-
   \item{emrounds}{integer; number of rounds of expectation
   maximisation to use}
+
+  \item{prob_cutoff}{double; posterior probability to use
+  as a cutoff for differential expression}
 }
 \value{
 list: - final: a data frame containing counts, DE

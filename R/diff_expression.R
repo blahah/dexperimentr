@@ -25,15 +25,25 @@ infer_DE <- function(counts,
                      method="EBSeq",
                      emrounds=25,
                      prob_cutoff=0.95) {
+  # create a directory for the outputs
+  wd <- getwd()
+  dir.create('de_data')
+  setwd('./de_data')
+  
+  # run the analysis
   if (method == "EBSeq") {
     de_data <- infer_EBSeq(counts, conditions, emrounds=emrounds)
   } else {
-    error("method not supported")
+    stop("method not supported")
   }
   de_data <- add_means_and_errors(de_data, conditions)
   de_data[['final']] <- output_pattern_sets(de_data, conditions, prob_cutoff)
   de_data[['final']] <- merge_annotation(de_data[['final']], annotation_file)
   write_results(de_data)
+  
+  # back to the previous directoy
+  setwd(wd)
+  
   return(de_data)
 }
 
@@ -194,7 +204,7 @@ merge_annotation <- function(de_data, annotation_file, by='gene.id') {
   annot <- read.csv(annotation_file, head=T, as.is=T)
   
   # annotation file must have a column with name gene.id
-  output <- merge(de_data, annot, by=by)
+  output <- merge(de_data, annot, by=by, all.x=T)
   
   return(unique(output))
 }
@@ -210,23 +220,32 @@ output_pattern_sets <- function(de_data, conditions, prob_cutoff) {
   # select probable DE genes above cutoff
   n <- length(unique(conditions))
   if (n == 2) {
-    prob_cols = which(names(final)=="PPDE")
-    sig <- final[which(final[,prob_cols] >= prob_cutoff),]
+    sig <- final[which(final$PPDE >= prob_cutoff),]
   } else {
     alln <- length(conditions)
     prob_cols <- (alln + 2):(alln + n + 2)
     sig <- final[which(apply(final[,prob_cols], 1, function(x) any(x >= prob_cutoff))),]
   }
+  if (!nrow(sig)) {
+    stop("There are no rows with significantly differential expression")
+  } else {
+    print(paste("There were", nrow(sig), "rows (out of", nrow(final), "tested) with signficantly differential expression"))
+    print(table(sig$pattern))
+  }
   patterns <- unique(sig$pattern)
   # export
   for (pat in patterns) {
-    patsig <- sig[sig$patterns == pat,]
-    if (nrow(patsig))
+    patsig <- sig[sig$pattern == pat,]
+    if (nrow(patsig)) {
+      print(paste("Saving", nrow(patsig), "significant results for pattern:", pat))
       write.table(x=patsig,
                   file=paste(paste(unique(conditions), collapse="_"), pat, ".csv", sep=""),
                   sep=",",
                   row.names=F,
                   col.names=T)
+    } else {
+      print(paste("No signficant results for pattern:", pat))
+    }
   }
   return(final)
 }
@@ -259,6 +278,7 @@ pattern <- function(x, p=c(1), i=1, j=2) {
 
 #' Write out a file containing all DE data collected
 write_results <- function(de_data) {
+  print("Writing out all results")
   write.table(x=de_data[['final']],
               file="all_DE_data_with_patterns.csv",
               sep=",",

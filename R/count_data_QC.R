@@ -2,6 +2,12 @@
 
 #` Run the count data QC pipeline
 count_data_QC <- function(df, conditions) {
+  # create a directory for the outputs
+  wd <- getwd()
+  dir.create('count_qc')
+  setwd('./count_qc')
+  
+  # run the QC analysis
   plot_log_dists(df, 
                  conditions, 
                  'with zero rows', 
@@ -13,6 +19,9 @@ count_data_QC <- function(df, conditions) {
                  'without zero rows', 
                  save=TRUE);
   check_nbinom(df);
+  
+  # back to the previous directory
+  setwd(wd)
   return(df)
 }
 
@@ -23,7 +32,7 @@ plot_log_dists <- function(df, conditions, suffix='', save=FALSE) {
   title=paste("distribution of log counts by sample", suffix)
   logcounts <- log(df)
   logcounts <- melt(logcounts)
-  conditiontable <- data.frame(conditions, variable=names(df))
+  conditiontable <- data.frame(conditions=conditions, variable=names(df))
   logcounts <- merge(logcounts, conditiontable, by='variable')
   suppressWarnings({
     p <- ggplot(data=logcounts) +
@@ -31,7 +40,7 @@ plot_log_dists <- function(df, conditions, suffix='', save=FALSE) {
       xlab("log expression count") +
       ggtitle(title)
     print(p)
-    if (save) ggsave(plot=p, file=paste(gsub(title, ' ', '_'), ".pdf", sep=""))
+    if (save) ggsave(plot=p, file=paste(gsub(title, pattern=' ', replacement='_'), ".pdf", sep=""))
   })
   return(p)
 }

@@ -1,18 +1,42 @@
 
 diff_expression_QC <- function(de_data, conditions) {
-  results <- de_data['results']
+  # create a directory for the outputs
+  wd <- getwd()
+  dir.create('de_qc')
+  setwd('./de_qc')
+  
+  # run the QC analysis
+  results <- de_data[['results']]
   if (length(unique(conditions)) <= 2) {
     # binary
-    
+    binary_diagnostic_plots(results)
   } else {
     # multiway
-
+    multiway_diagnostic_plots(results)
   }
+  
+  setwd(wd)
 }
 
 binary_diagnostic_plots <- function(results) {
-  QQP(results.2way)
-  DenNHist(results.2way)
+  
+  FC = PostFC(results)
+  pdf('posterior_FC_vs_raw_FC.pdf')
+  PlotPostVsRawFC(results,FC)
+  dev.off()
+  
+  pdf('quantile_plots.pdf')  
+  par(mfrow=c(1,1))
+  QQP(results, GeneLevel=T)
+  dev.off()
+  
+  pdf('hyperparameter_histograms_vs_prob_density.pdf')  
+  par(mfrow=c(1,1))
+  DenNHist(results, GeneLevel=T)
+  dev.off()
+  
+  par(mfrow=c(1,1))
+  plot_convergence(results)
 }
 
 multiway_diagnostic_plots <- function(results) {
@@ -21,12 +45,13 @@ multiway_diagnostic_plots <- function(results) {
   QQP(results)
   DenNHist(results)
   PlotPostVsRawFC(EBOut=results, FCOut=fc)
+  plot_convergence(results)
 }
 
 multiway_pattern_plots <- function(de_data) {
   # write out pattern plot
-  library(ggplot2)
-  library(reshape2)
+  get_package('ggplot2')
+  get_package('reshape2')
   patterns <- as.data.frame(patterns)
   patterns$pattern <- rownames(patterns)
   patterns.melted <- melt(patterns, id='pattern')
@@ -56,4 +81,19 @@ multiway_pattern_plots <- function(de_data) {
     scale_colour_brewer(palette="Paired", guide=F) +
     ggtitle('Count of genes with a posterior probability >= 0.95 of\n following each expression pattern')
   ggsave('gene_count_by_expression_pattern.pdf', q)
+}
+
+plot_convergence <- function(results) {
+  get_package('ggplot2')
+  get_package('reshape2')
+  d <- data.frame(alpha=results$Alpha,
+                  beta=results$Beta,
+                  iteration=1:(length(results$Alpha)))
+  d <- melt(d, id='iteration')
+  p <- qplot(data=d, x=iteration, 
+              y=value, colour=variable, 
+              geom="line", ymin=0) + 
+          theme_bw() +
+          ggtitle('Convergence of hyperparameters')
+  ggsave(plot=p, filename="hyperparameter_convergence.pdf")
 }
