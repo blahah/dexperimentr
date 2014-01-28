@@ -200,7 +200,7 @@ perform_GO_enrichment <- function(de_data,
     pattern_results <- list()
     
     allgenes <- final[,pattern]
-    names(allgenes) <- rownames(final)
+    names(allgenes) <- final$gene.id
     ontologies <- c('BP', 'MF', 'CC')
     
     # iterate through ontologies testing each separately
