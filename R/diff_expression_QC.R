@@ -2,7 +2,7 @@
 diff_expression_QC <- function(de_data, conditions) {
   # create a directory for the outputs
   wd <- getwd()
-  dir.create('de_qc')
+  dir.create('de_qc', showWarnings=FALSE)
   setwd('./de_qc')
   
   # run the QC analysis
