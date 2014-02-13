@@ -8,6 +8,8 @@ dexperimentr is a collection of tools for automating best-practise RNAseq differ
 
 ## Usage
 
+**!! WARNING !!** these instructions will eventually be true... but they're not yet. At the moment, this is more of a design-by-help document.
+
 To run the entire workflow, you need the following:
 
 1. your count data as a dataframe, samples as named columns and genes/transcripts as named rows
