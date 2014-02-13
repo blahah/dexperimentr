@@ -4,7 +4,7 @@
 count_data_QC <- function(df, conditions) {
   # create a directory for the outputs
   wd <- getwd()
-  dir.create('count_qc')
+  dir.create('count_qc', showWarnings=FALSE)
   setwd('./count_qc')
   
   # run the QC analysis
@@ -74,7 +74,6 @@ best_distribution <- function(x, plots=TRUE) {
   
   distributions <- distributions[!is.na(fitdata)]
   fitdata <- remove_na_list(fitdata)
-  print(fitdata)
   aics <- lapply(fitdata, function(y) y$aic)
   aics <- remove_na_list(aics)
   distributions <- lapply(fitdata, function(y) y$distname)
