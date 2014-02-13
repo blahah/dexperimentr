@@ -7,13 +7,24 @@
 #' get_package('ggplot2')
 #' get_package('EBSeq', bioconductor=TRUE)
 get_package <- function(package, bioconductor=FALSE) {
-  if (!package %in% installed.packages()) {
+  inst <- !package %in% installed.packages()
+  if (!inst) {
+    tryCatch({
+        library(package, character.only=T)
+      }, 
+      silent=TRUE,
+      error=function(e){
+        inst <- TRUE
+      })
+  }
+  if (inst) {
+    print("installing")
     if (bioconductor) {
-      return(install.packages(package))
-    } else {
       source("http://bioconductor.org/biocLite.R")
       return(biocLite(package))
+    } else {
+      install.packages(package)
     }
+    return(library(package, character.only=T))
   }
-  return(library(package, character.only=T))
 }
