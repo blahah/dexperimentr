@@ -17,44 +17,98 @@
 ontology_enrichment <- function(de_data,
                                 mappingsfile,
                                 conditions,
+                                longmappingsfile,
+                                named_patterns=list(),
                                 ppcutoff=0.95,
                                 alpha=0.05) {
+  wd <- getwd()
+  dir.create('functional_analysis', showWarnings=FALSE)
+  setwd('./functional_analysis')
+  for (d in c('results', 'graphs', 'plots')) {
+    dir.create(d, showWarnings=FALSE)
+  }
+
   go_results <- perform_GO_enrichment(de_data,
                         mappingsfile,
                         conditions,
                         ppcutoff,
                         alpha)
-  plot_high_level_GO(go_results)
+  # replace named patterns
+  print('replacing pattern names..')
+  go_results$Pattern <- sapply(go_results$Pattern,
+                          function(x) {
+                            if (x %in% names(named_patterns)) {
+                              return(named_patterns[[x]])
+                            } else {
+                              return(x)
+                            }
+                        })
+  # preserve input order of pattern names
+  go_results$Pattern <- factor(go_results$Pattern, levels=named_patterns, ordered=TRUE)
+  # make plots
+  plot_high_level_GO(go_results, de_data, longmappingsfile)
   plot_detailed_GO(de_data, go_results)
+  setwd(wd)
 }
 
-plot_high_level_GO <- function(go_results) {
-  for (samplename in names(go_results)) {
-    sample <- go_results[[samplename]]
-    for (ontname in names(sample)) {
-      ontology <- sample[[ontname]]
-      plot_ontology(ontology)
+#' Produce a horizontal stacked barplot showing the
+#' proportion of genes in each enriched GO term that
+#' fall into each expression pattern
+plot_high_level_GO <- function(go_results, de_data, longmappingsfile) {
+  print("Making high-level GO plots")
+  long_go <- read.csv(longmappingsfile, sep="\t", as.is=TRUE)
+  names(long_go)[2] <- "gene.id"
+  de_data[['final']] <- merge(de_data[['final']], long_go, by="gene.id")
+  final <- de_data[['final']]
+  for (pattern in unique(go_results$Pattern)) {
+    subset <- go_results[go_results$Pattern == pattern,]
+    for (ontname in unique(subset$Ontology)) {
+      ontology <- subset[subset$Ontology == ontname,]
+      plot_ontology(ontname, ontology, de_data, pattern)
     }
   }
 }
 
+#' For each enriched GO term produce a plot showing
+#' the expression and direction of each gene.
+#' 
+#' If there are two conditions, a horizontal barplot is produced,
+#' with log2 fold change on the x-axis, genes on the y-axis, and
+#' one gene per line.
+#' 
+#' If there are >2 conditions, a grid of barplots is produced,
+#' with one barplot per gene, one bar per condition, and the y-axis
+#' within each barplot being log expression count.
 plot_detailed_GO <- function(go_results,
+                             de_data,
                              maxsize = 50,
                              minsize = 2) {
+  print("Making detailed GO plots")
   terms <- terms[which(terms < maxsize)]
   terms <- terms[which(terms > minsize)]
   length(terms)
   for(term in names(terms)) {
     tryCatch({
       print(term)
-      plot_term(term)
+      plot_term(term, de_data)
     }, error=function(err) {
       print(paste('failed to plot', term, "due to error:", err))
     })
   }
 }
 
+#' Produce a plot showing the expression and direction of each gene
+#' in the specified GO term.
+#' 
+#' If there are two conditions, a horizontal barplot is produced,
+#' with log2 fold change on the x-axis, genes on the y-axis, and
+#' one gene per line.
+#' 
+#' If there are >2 conditions, a grid of barplots is produced,
+#' with one barplot per gene, one bar per condition, and the y-axis
+#' within each barplot being log expression count.
 plot_term <- function(term, save=TRUE) {
+  print(paste("Plotting", term, "GO term"))
   d <- unique(alldata[alldata$Term == term,]) 
   d <- d[-is.na(d$id),c("fc", "Annotation", "Ontology", "id", 'up')]
   names(d) <- c('fc', 'gene', "ontology", "id", 'up')
@@ -87,13 +141,45 @@ plot_term <- function(term, save=TRUE) {
     ggsave(paste('GOplots/', d$ontology[1], '_', term, '.pdf', sep=""),
            height=7*length(d$fc)+80, width=350, units="mm")
   }
+  print(p)
   return(p)
 }
 
-plot_ontology <- function(ontology, save=TRUE) {
-  d <- both.pc[both.pc$ontology == "BP",]
-  d <- d[with(d, order(variable)),]
-  p <- ggplot(data=d, aes(x=description, y=value, fill=variable)) +
+
+#' Produce a plot with all enriched GO terms and the prop of each pattern
+plot_ontology <- function(ontname, go_results, de_data, pattern, save=TRUE) {
+  print(paste("Plotting", ontname, "ontology"))
+  # extract data from de_data
+  final <- de_data[['final']]
+  mean_cols <- de_data[['mean_cols']]
+  # subset to this ontology
+  d <- final[final$Ontology == ontname,]
+  # subset to enriched go terms
+  d <- d[d$go.id %in% go_results$GO.ID,]
+  # we only want the pattern and GOid columns
+  d <- d[,c('pattern', 'go.id')]
+  # count each pattern per GOid
+  d <- as.data.frame(t(table(d)))
+  # convert to percentages, count totals
+  d <- ddply(d, .(go.id), function(x) {
+    goid <- x$go.id[1]
+    total <- go_results$Annotated[go_results$GO.ID==goid][1]
+    # TODO: fix these proportions - are we leaving out some counts because
+    # they're not significant?
+    # START HERE
+    data.frame(x, prop = x$Freq / total, total)
+  })
+  # add descriptions
+  d <- merge(d, 
+             data.frame(go.id=go_results$GO.ID, 
+                        description=go_results$Term), 
+             by='go.id')
+  # order
+  d$pattern <- factor(d$pattern, levels=levels(go_results$Pattern), ordered=TRUE)
+  d$description <- paste(d$description, "\n", d$go.id, " (", d$total, ")", sep="")
+  d <- d[with(d, order(-total, pattern)),]
+  d <- transform(d, description = reorder(description, -total))
+  p <- ggplot(data=d, aes(x=description, y=prop, fill=pattern)) +
     geom_bar(stat='identity') +
     theme_bw() +
     theme(legend.text.align = 0) + # left align
@@ -102,12 +188,21 @@ plot_ontology <- function(ontology, save=TRUE) {
     scale_y_continuous(name="Percent of genes differentially expressed",
                        expand = c(0, 0)) +
     scale_x_discrete(name="GO annotation (count of genes)",
-                     expand=c(0,0)) +
-    scale_fill_manual(name="Enriched in", values=colours, labels=labels) +
+                     expand=c(0, 0)) +
+    scale_fill_brewer(name="Enriched in", type="div") +
     coord_flip()
   if(save) {
-    ggsave(paste(ontology, '_GO_enrichment.png', sep=''))
-    ggsave(paste(ontology, "_GO_enrichment.pdf", sep=''))
+    height = (3*dim(d)[1])+60
+    width = 300
+    units = "mm"
+    ggsave(paste("plots/", pattern, "_", ontname, '_GO_enrichment.png', sep=''),
+           width=width,
+           height=height,
+           units=units)
+    ggsave(paste("plots/", pattern, "_", ontname, "_GO_enrichment.pdf", sep=''),
+           width=width,
+           height=height,
+           units=units)
   }
   return(p)
 }
@@ -178,34 +273,33 @@ perform_GO_enrichment <- function(de_data,
                                 conditions,
                                 ppcutoff=0.95,
                                 alpha=0.05) {
+  print("Performing GO enrichment tests")
   final <- de_data[['final']]
-  if (length(unique(conditions)) == 2)
+  if (length(unique(conditions)) == 2) {
     prob_cols <- which(names(final)=='PPDE')
-  else
+  } else {
     prob_cols <- de_data[['prob_cols']]
-  
-  get_package('topGO')
-  geneID2GO <- readMappings(file = mappingsfile)
-  
-  # define the gene cutoff function for posterior probabilities
-  topDiffGenes <- function(pp) {
-    return(pp >= ppcutoff)
   }
-  
-  results = list()
-  
-  # iterate through patterns performing GO analysis
-  for (pattern in colnames(final)[prob_cols]) {
-    print(paste("GO enrichment testing for pattern", pattern))
-    pattern_results <- list()
+
+  get_package('topGO', bioconductor=TRUE)
+  geneID2GO <- readMappings(file = mappingsfile)
+
+  results = data.frame()
     
-    allgenes <- final[,pattern]
+  # iterate through patterns performing GO analysis
+  for (pattern in unique(final$pattern)) {
+    print(paste("GO enrichment testing for pattern", pattern))
+    
+    allgenes <- 1:dim(final)[1]
     names(allgenes) <- final$gene.id
+    topDiffGenes <- function(row) {
+      return(final$pattern[row] == pattern)
+    }
     ontologies <- c('BP', 'MF', 'CC')
     
     # iterate through ontologies testing each separately
     for (ontology in ontologies) {
-      print(paste("Fisher testing GO enrichment for ontology", ontology, "in condition", pattern))
+      print(paste("Fisher testing GO enrichment for ontology", ontology, "in condition:", pattern))
       GOdata <- new("topGOdata",
                     description = "Test", ontology = ontology,
                     allGenes = allgenes, geneSel = topDiffGenes,
@@ -218,8 +312,8 @@ perform_GO_enrichment <- function(de_data,
       # write out short-form results
       allRes <- GenTable(GOdata, classicFisher = resultFisher,
                          orderBy = "classicFisher", ranksOf = "classicFisher", topNodes = 100)
-      allRes <- allRes[allRes$classicFisher <= 0.05,]
-      write.table(file=paste(ontology, pattern, "GO.csv", sep='_'), 
+      allRes <- allRes[allRes$classicFisher <= alpha,]
+      write.table(file=paste("results/", ontology, pattern, "GO.csv", sep='_'), 
                   x=allRes,
                   row.names=F,
                   col.names=T,
@@ -228,15 +322,15 @@ perform_GO_enrichment <- function(de_data,
       # print graph of signficant nodes
       printGraph(GOdata, resultFisher, 
                  firstSigNodes = 15, 
-                 fn.prefix = paste(ontology, pattern, sep='_'), 
+                 fn.prefix = paste("graphs/", ontology, pattern, sep='_'), 
                  useInfo = "all", 
                  pdfSW = TRUE)
       
-      # save ontology
-      pattern_results[[ontology]] <- allRes
+      # save ontology and pattern
+      allRes$Ontology <- ontology
+      allRes$Pattern <- pattern
+      results <- rbind(results, allRes)
     }
-    # save pattern
-    results[['pattern']] <- pattern_results
   }
   return(results)
 }
