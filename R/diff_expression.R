@@ -24,10 +24,11 @@ infer_DE <- function(counts,
                      annotation_file,
                      method="EBSeq",
                      emrounds=25,
+                     named_patterns=list(),
                      prob_cutoff=0.95) {
   # create a directory for the outputs
   wd <- getwd()
-  dir.create('de_data')
+  dir.create('de_data', showWarnings=FALSE)
   setwd('./de_data')
   
   # run the analysis
@@ -37,7 +38,8 @@ infer_DE <- function(counts,
     stop("method not supported")
   }
   de_data <- add_means_and_errors(de_data, conditions)
-  de_data[['final']] <- output_pattern_sets(de_data, conditions, prob_cutoff)
+  de_data[['final']] <- output_pattern_sets(de_data, conditions, 
+                                            named_patterns, prob_cutoff)
   de_data[['final']] <- merge_annotation(de_data[['final']], annotation_file)
   write_results(de_data)
   
@@ -63,6 +65,7 @@ infer_DE <- function(counts,
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
 infer_EBSeq <- function(counts, conditions, emrounds=25) {
+  get_package('EBSeq', bioconductor=TRUE)
   ncond = length(unique(conditions))
   if (ncond < 2) {
     error("There must be at least two different conditions to perform DE")
@@ -89,9 +92,7 @@ infer_EBSeq <- function(counts, conditions, emrounds=25) {
 #'            diagnostic plots and QC)
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
-infer_binary_EBSeq <- function(counts, conditions, emrounds=25) {
-  get_package('EBSeq')
-  
+infer_binary_EBSeq <- function(counts, conditions, emrounds=25) {  
   counts <- data.matrix(counts)
   
   # normalization factors
@@ -138,8 +139,6 @@ infer_binary_EBSeq <- function(counts, conditions, emrounds=25) {
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
 infer_multiway_EBSeq <- function(counts, conditions, emrounds=25) {
-  get_package('EBSeq')
-  
   counts <- data.matrix(counts)
   
   # conditions
@@ -210,13 +209,26 @@ merge_annotation <- function(de_data, annotation_file, by='gene.id') {
 }
 
 #' Write out DE information for each DE gene expression pattern
-output_pattern_sets <- function(de_data, conditions, prob_cutoff) {
+output_pattern_sets <- function(de_data, conditions, 
+                                named_patterns, prob_cutoff) {
   final <- de_data[['final']]
   mean_cols <- de_data[['mean_cols']]
   # add patterns
   final$pattern <- apply(final[,mean_cols],
                        1,
                        function(x) paste(pattern(x), collapse='_'))
+  # genes below cutoff should have flat pattern
+  final$pattern[which(final$PPDE < prob_cutoff)] <- 
+    paste(rep(1, length(mean_cols)), collapse="_")
+  # replace named patterns
+  final$pattern <- sapply(final$pattern,
+                           function(x) {
+                             if (x %in% names(named_patterns)) {
+                               return(named_patterns[[x]])
+                             } else {
+                               return(x)
+                             }
+                           })
   # select probable DE genes above cutoff
   n <- length(unique(conditions))
   if (n == 2) {
