@@ -252,7 +252,7 @@ output_pattern_sets <- function(de_data, conditions,
   if (!nrow(sig)) {
     stop("There are no rows with significantly differential expression")
   } else {
-    print(paste("There were", nrow(sig), "rows (out of", nrow(final), "tested) with signficantly differential expression"))
+    print(paste("There were", nrow(sig), "rows (out of", nrow(final), "tested) with signficantly differential expression (>=", prob_cutoff, ")"))
     print(table(sig$pattern))
   }
   patterns <- unique(sig$pattern)
