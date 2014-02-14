@@ -110,9 +110,13 @@ infer_binary_EBSeq <- function(counts, conditions, emrounds=25) {
   # calculate fold change
   fc <- PostFC(results)
   PlotPostVsRawFC(EBOut=results, FCOut=fc)
+
+  # get normalised counts
+  normcounts <- normalise_counts(counts, normfactors)
+
   # merge expression and probabilities
   final <- data.frame(gene.id=rownames(counts),
-                      counts,
+                      normcounts,
                       pp, 
                       log2FC=log2(fc$PostFC),
                       FC=fc$PostFC)
@@ -123,6 +127,10 @@ infer_binary_EBSeq <- function(counts, conditions, emrounds=25) {
   return(list(final=final, 
               results=results,
               prob_cols=prob_cols))
+}
+
+normalise_counts <- function(counts, normfactors) {
+  return(round(counts / do.call(rbind, rep(list(normfactors), nrow(counts)))))
 }
 
 #' Perform the multiway differential expression experiment using EBSeq
@@ -157,10 +165,13 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=25) {
   
   # parse results
   pp <- GetMultiPP(results)
+
+  # normalise counts
+  normcounts <- normalise_counts(counts, normfactors)
   
   # merge counts and DE
   final <- data.frame(gene.id=rownames(counts),
-                      counts,
+                      normcounts,
                       pp$PP)
   
   # store the probability column indices for pattern detection
