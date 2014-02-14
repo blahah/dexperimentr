@@ -114,23 +114,29 @@ infer_binary_EBSeq <- function(counts, conditions, emrounds=25) {
   # get normalised counts
   normcounts <- normalise_counts(counts, normfactors)
 
-  # merge expression and probabilities
-  final <- data.frame(gene.id=rownames(counts),
-                      normcounts,
-                      pp, 
-                      log2FC=log2(fc$PostFC),
-                      FC=fc$PostFC)
+  # merge
+  merged <- merge(normcounts, pp, by="row.names", all.x=T)
+  merged <- merge(merged, fc$PostFC, by.x="Row.names", by.y="row.names", all.x=T)
+
+  # tidy up merged data
+  n <- ncol(merged)
+  merged[,2:n] <- 
+    data.frame(apply(merged[,2:n], 2, as.numeric)) # all cols are strings after merge
+
+  names(merged)[1] <- "gene.id"
+  names(merged)[ncol(merged)] <- "log2.FC"
+  merged$log2.FC <- log2(merged$log2.FC)
   
   # store the probability column indices for pattern detection
   prob_cols <- (ncol(counts)+1):(ncol(counts)+1+ncol(pp))
   
-  return(list(final=final, 
+  return(list(final=merged, 
               results=results,
               prob_cols=prob_cols))
 }
 
 normalise_counts <- function(counts, normfactors) {
-  return(round(counts / do.call(rbind, rep(list(normfactors), nrow(counts)))))
+  round(t(t(counts) / normfactors))
 }
 
 #' Perform the multiway differential expression experiment using EBSeq
@@ -252,7 +258,8 @@ output_pattern_sets <- function(de_data, conditions,
   if (!nrow(sig)) {
     stop("There are no rows with significantly differential expression")
   } else {
-    print(paste("There were", nrow(sig), "rows (out of", nrow(final), "tested) with signficantly differential expression (>=", prob_cutoff, ")"))
+    print(paste("There were", nrow(sig), "rows (out of", nrow(final), 
+      "tested) with significantly differential expression (>=", prob_cutoff, ")"))
     print(table(sig$pattern))
   }
   patterns <- unique(sig$pattern)
