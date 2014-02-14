@@ -4,6 +4,9 @@ diff_expression_QC <- function(de_data, conditions) {
   wd <- getwd()
   dir.create('de_qc', showWarnings=FALSE)
   setwd('./de_qc')
+
+  # basic universal diagnostics
+  basic_diagnostics(de_data, conditions)
   
   # run the QC analysis
   results <- de_data[['results']]
@@ -16,6 +19,18 @@ diff_expression_QC <- function(de_data, conditions) {
   }
   
   setwd(wd)
+}
+
+basic_diagnostics <- function(de_data, conditions) {
+  final <- de_data[['final']]
+  # plot (normalised) count sanity diagnostics
+  counts <- final[,2:(1+length(conditions))]
+  plot_correlation_matrix(counts)
+  plot_pca(counts)
+  plot_count_collision(counts)
+  # plot probability diagnostics
+  probs <- final[,de_data[['prob_cols']]]
+  plot_log_prob_dist(probs)
 }
 
 binary_diagnostic_plots <- function(results) {
@@ -96,4 +111,41 @@ plot_convergence <- function(results) {
           theme_bw() +
           ggtitle('Convergence of hyperparameters')
   ggsave(plot=p, filename="hyperparameter_convergence.pdf")
+}
+
+plot_pca <- function(counts) {
+  get_package('ggplot2')
+  pca <- prcomp(counts, scale=T)
+  scores <- data.frame(name=names(counts), pca$x[,1:3])
+  pdf('pca.pdf')
+  pc1.2 <- qplot(x=PC1, y=PC2, data=scores, colour=factor(name)) +
+    theme(legend.position="none")
+  pc1.3 <- qplot(x=PC1, y=PC3, data=scores, colour=factor(name)) +
+    theme(legend.position="none")
+  pc2.3 <- qplot(x=PC2, y=PC3, data=scores, colour=factor(name)) +
+    theme(legend.position="none")
+  dev.off()
+}
+
+plot_correlation_matrix <- function(counts) {
+  get_package('ggplot2')
+  get_package('reshape2')
+  p <- qplot(x=Var1, y=Var2, data=melt(cor(counts)), geom="tile",
+        fill=value, xlab="", ylab="")
+  ggsave(plot=p, filename='correlation_matrix.pdf')
+}
+
+plot_count_collision <- function(counts) {
+  get_package('ggplot2')
+  get_package('GGally')
+  p <- ggpairs(counts)
+  ggsave(plot=p, filename='all_vs_all_counts_scatter.pdf')
+}
+
+plot_log_prob_dist <- function(probs) {
+  get_package(ggplot2)
+  get_package(reshape2)
+  d <- melt(log(probs))
+  p <- ggplot(data=d, x=value, colour=variable) + geom_density()
+  ggsave(plot=p, filename='')
 }
