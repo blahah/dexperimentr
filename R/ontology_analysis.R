@@ -81,19 +81,56 @@ plot_high_level_GO <- function(go_results, de_data, longmappingsfile) {
 #' within each barplot being log expression count.
 plot_detailed_GO <- function(go_results,
                              de_data,
+                             longmappingsfile,
                              maxsize = 50,
                              minsize = 2) {
   print("Making detailed GO plots")
-  terms <- terms[which(terms < maxsize)]
-  terms <- terms[which(terms > minsize)]
-  length(terms)
-  for(term in names(terms)) {
-    tryCatch({
-      print(term)
-      plot_term(term, de_data)
-    }, error=function(err) {
-      print(paste('failed to plot', term, "due to error:", err))
-    })
+  # load long format GO annotation
+  # TODO: remove requirement for two GO annot files
+  long_go <- read.csv(longmappingsfile, sep="\t", as.is=TRUE)
+  names(long_go)[2] <- "gene.id"
+  # merge into expression and DE data
+  final <- de_data[['final']]
+  final <- merge(final, long_go, by="gene.id")
+  # filter GO terms by size
+  terms <- subset(go_results, Annotated <= maxsize & Annotated > minsize)$GO.ID
+  print(terms)
+  final <- subset(final, go.id %in% terms)
+  # prepare the dataframe
+  # melt means and standard errors to one column each
+  mean_cols <- de_data[['mean_cols']]
+  mean_colnames <- names(final)[mean_cols]
+  sem_colnames <- names(final)[mean_cols + 1]
+  melted_means <- melt(final[,c('gene.id', mean_colnames)], 
+                       id='gene.id', variable.name='sample',
+                       value.name='mean')
+  melted_means$sample <- gsub(melted_means$sample,
+                              pattern="\\.mean",
+                              replacement="")
+  melted_sems <- melt(final[,c('gene.id', sem_colnames)], 
+                       id='gene.id', variable.name='sample',
+                       value.name='sem')
+  melted_sems$sample <- gsub(melted_sems$sample,
+                             pattern="\\.stderr",
+                             replacement="")
+  melted_means_sems <- merge(melted_means, melted_sems,
+                             by=c('gene.id', 'sample'))
+  # merge the annotation back in
+  data <- merge(melted_means_sems,
+                final[,c('gene.id', 'pattern', 
+                         'go.id', 'Description', 
+                         'Term', 'Ontology')],
+                by='gene.id')
+  print(unique(data$term))
+  print(length(which(is.na(data))))
+  # copy pattern ordering from go_results
+  # TODO: structure patterns of de_results[['final']] properly
+  data$pattern <- factor(data$pattern, levels=levels(go_results$Pattern), ordered=TRUE)
+  # plot
+  for(term in terms) {
+    plotdata <- unique(subset(data, go.id == term))
+    title <- paste(plotdata[1,c('Ontology', 'Term', 'go.id')], collapse="-")
+    plot_term(term, plotdata, title)
   }
 }
 
@@ -107,41 +144,63 @@ plot_detailed_GO <- function(go_results,
 #' If there are >2 conditions, a grid of barplots is produced,
 #' with one barplot per gene, one bar per condition, and the y-axis
 #' within each barplot being log expression count.
-plot_term <- function(term, save=TRUE) {
-  print(paste("Plotting", term, "GO term"))
-  d <- unique(alldata[alldata$Term == term,]) 
-  d <- d[-is.na(d$id),c("fc", "Annotation", "Ontology", "id", 'up')]
-  names(d) <- c('fc', 'gene', "ontology", "id", 'up')
-  d$gene <- paste(d$gene, " (", d$id, ")", sep="") # add locus IDs to gene names
-  d$gene <- gsub('(.{1,50})(\\s|$)', '\\1\n', d$gene) # split lines at 50 chars
-  d$gene <- factor(d$gene, levels=d$gene[order(d$up, -d$fc)], ordered=TRUE)
-  p <- ggplot(d, aes(x=gene, y=fc, fill=up)) +
-    geom_bar(stat="identity") +
-    scale_fill_manual(name="Enriched in", values = colours, labels = labels) +
+plot_term <- function(term, d, title, save=TRUE) {
+  if(title == "NA-NA-NA") {
+    print(d)
+  }
+  get_package("ggplot2")
+  get_package("grid")
+  print(paste("Plotting", title, "GO term"))
+  d$gene <- paste(d$Description, " (", d$gene.id, ")", sep="") # add locus IDs to gene names
+  d$gene <- gsub('(.{1,25})(\\s|$)', '\\1\n', d$gene) # split lines at 25 chars
+  newlevels <- gsub(levels(d$pattern), pattern="_", replacement=" ")
+  newlevels <- gsub('(.{1,15})(\\s|$)', '\\1\n', newlevels) # split levels at 15 chars
+  levels(d$pattern) <- newlevels
+  p <- ggplot(arrange(d, pattern), aes(x=reorder(factor(gene), mean, range),
+                                       y=mean, 
+                                       fill=factor(sample))) +
+    geom_bar(stat="identity", position=position_dodge(0.9)) +
+    geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem),
+                  colour="black", position=position_dodge(0.9),
+                  width=0.2) +
+    scale_fill_brewer(
+      name="Condition", type="qual", palette=4,
+      guide=guide_legend(
+        direction="horizontal", 
+        label.theme = element_text(angle = 90, face="italic"),
+        title.theme = element_text(angle = 90, face="bold"),
+        title.hjust = 0.5,
+        label.position="top", 
+        label.hjust = 0.5, 
+        label.vjust = 0.5
+      )
+    ) +
     theme_bw() +
     theme(plot.margin = unit(c(1,1,1,1), "cm"), # top, right, bottom, left
           legend.text.align = 0, # left align
-          axis.text.y = element_text(hjust=1,
-                                     vjust=0.8)) +
-    theme(panel.border = theme_border()) +
-    theme(axis.ticks.y=element_blank()) +
-    theme(panel.grid.major.y = element_blank()) +
-    theme(panel.grid.major.x = element_blank()) +
-    scale_y_continuous(name=expression('Log2 fold change (' * italic('O. sativa') * '/' *
-                                         italic('E. glabrescens') * ')', sep=""),
-                       expand = c(0, 0)) +
-    scale_x_discrete(name="Gene",
-                     expand=c(0,0)) +
-    coord_flip()
+          axis.title.x = element_text(angle=180),
+          axis.text.x = element_text(angle=90, hjust=1,
+                                     vjust=0.5),
+          axis.text.y = element_text(angle=90, hjust=0.5)) +
+    facet_grid(.~pattern, scales="free_x", space="free_x") +
+    xlab("gene")
+    # # rotate the plot
+    # g <- ggplotGrob(p)
+    # g <- grid.raster(g, vp=viewport(angle=90))
+    # print(g)
   if (save) {
-    term <- gsub(x=term, pattern="'", replacement="")
-    term <- gsub(x=term, pattern=" ", replacement="_")
-    ggsave(paste('GOplots/', d$ontology[1], '_', term, '.png', sep=""),
-           height=7*length(d$fc)+80, width=350, units="mm")
-    ggsave(paste('GOplots/', d$ontology[1], '_', term, '.pdf', sep=""),
-           height=7*length(d$fc)+80, width=350, units="mm")
+    term <- gsub(x=title, pattern="'", replacement="")
+    term <- gsub(x=title, pattern=" ", replacement="_")
+    pdf(
+      paste("plots/", title, ".pdf", sep=""),
+      width=dim(d)[1],
+      height=7,
+      paper="a4r"
+    )
+    print(p)
+    dev.off()
   }
-  print(p)
+  # print(p)
   return(p)
 }
 

@@ -26,11 +26,15 @@ basic_diagnostics <- function(de_data, conditions) {
   # plot (normalised) count sanity diagnostics
   counts <- final[,2:(1+length(conditions))]
   plot_correlation_matrix(counts)
-  plot_pca(counts)
+  plot_pca(counts, final$pattern)
   plot_count_collision(counts)
   # plot probability diagnostics
-  probs <- final[,de_data[['prob_cols']]]
-  plot_log_prob_dist(probs)
+  if (length(unique(conditions)) == 2) {
+    probs <- final[,'PPDE']
+  } else {
+    probs <- final[,de_data[['prob_cols']]]
+  }
+  plot_prob_dist(probs)
 }
 
 binary_diagnostic_plots <- function(results) {
@@ -113,25 +117,34 @@ plot_convergence <- function(results) {
   ggsave(plot=p, filename="hyperparameter_convergence.pdf")
 }
 
-plot_pca <- function(counts) {
+plot_pca <- function(counts, pattern) {
   get_package('ggplot2')
+  get_package('gridExtra')
   pca <- prcomp(counts, scale=T)
-  scores <- data.frame(name=names(counts), pca$x[,1:3])
+  scores <- as.data.frame(pca$x[,1:3])
+  scores$pattern <- pattern
   pdf('pca.pdf')
-  pc1.2 <- qplot(x=PC1, y=PC2, data=scores, colour=factor(name)) +
-    theme(legend.position="none")
-  pc1.3 <- qplot(x=PC1, y=PC3, data=scores, colour=factor(name)) +
-    theme(legend.position="none")
-  pc2.3 <- qplot(x=PC2, y=PC3, data=scores, colour=factor(name)) +
-    theme(legend.position="none")
+  pc1.2 <- qplot(x=PC1, y=PC2, data=scores, colour=pattern) + 
+              theme(legend.position="none", plot.margin = unit(c(2, 1, 1, 1), "cm"))
+  pc1.3 <- qplot(x=PC1, y=PC3, data=scores, colour=pattern) + 
+              theme(legend.direction = "horizontal", 
+                    legend.position = c(0.1, 1.05),
+                    plot.margin = unit(c(2, 1, 1, 1), "cm"))
+  pc2.3 <- qplot(x=PC2, y=PC3, data=scores, colour=pattern) + 
+              theme(legend.position="none",
+                    plot.margin = unit(c(2, 1, 1, 1), "cm"))
+  print(grid.arrange(pc1.2, pc1.3, pc2.3, ncol=3, nrow=1))
   dev.off()
 }
 
 plot_correlation_matrix <- function(counts) {
   get_package('ggplot2')
   get_package('reshape2')
-  p <- qplot(x=Var1, y=Var2, data=melt(cor(counts)), geom="tile",
-        fill=value, xlab="", ylab="")
+  c <- melt(cor(counts))
+  p <- ggplot(data=c, aes_string(x=names(c)[1], y=names(c)[2], fill="value")) +
+   geom_tile() +
+   xlab('') +
+   ylab('')
   ggsave(plot=p, filename='correlation_matrix.pdf')
 }
 
@@ -139,13 +152,20 @@ plot_count_collision <- function(counts) {
   get_package('ggplot2')
   get_package('GGally')
   p <- ggpairs(counts)
-  ggsave(plot=p, filename='all_vs_all_counts_scatter.pdf')
+  pdf('all_vs_all_counts_scatter.pdf')
+  print(p)
+  dev.off()
 }
 
-plot_log_prob_dist <- function(probs) {
-  get_package(ggplot2)
-  get_package(reshape2)
-  d <- melt(log(probs))
-  p <- ggplot(data=d, x=value, colour=variable) + geom_density()
-  ggsave(plot=p, filename='')
+plot_prob_dist <- function(probs) {
+  get_package('ggplot2')
+  get_package('reshape2')
+  d <- melt(probs)
+  if (ncol(d) == 1) {
+    p <- ggplot(data=d, aes(x=value)) + geom_density()
+  } else {
+    p <- ggplot(data=d, aes(x=value, colour=variable)) + geom_density()
+  }
+  print(p)
+  ggsave(plot=p, filename='prob_dist.pdf')
 }
