@@ -47,7 +47,7 @@ ontology_enrichment <- function(de_data,
   go_results$Pattern <- factor(go_results$Pattern, levels=named_patterns, ordered=TRUE)
   # make plots
   plot_high_level_GO(go_results, de_data, longmappingsfile)
-  plot_detailed_GO(de_data, go_results)
+  plot_detailed_GO(go_results, de_data, longmappingsfile)
   setwd(wd)
 }
 
@@ -71,19 +71,15 @@ plot_high_level_GO <- function(go_results, de_data, longmappingsfile) {
 
 #' For each enriched GO term produce a plot showing
 #' the expression and direction of each gene.
-#' 
-#' If there are two conditions, a horizontal barplot is produced,
-#' with log2 fold change on the x-axis, genes on the y-axis, and
-#' one gene per line.
-#' 
-#' If there are >2 conditions, a grid of barplots is produced,
-#' with one barplot per gene, one bar per condition, and the y-axis
-#' within each barplot being log expression count.
+#' Bars are grouped by gene, with one bar per gene per
+#' condition, with y equal to the mean normalised expression
+#' count.
 plot_detailed_GO <- function(go_results,
                              de_data,
                              longmappingsfile,
                              maxsize = 50,
                              minsize = 2) {
+  get_package("reshape2")
   print("Making detailed GO plots")
   # load long format GO annotation
   # TODO: remove requirement for two GO annot files
@@ -91,25 +87,26 @@ plot_detailed_GO <- function(go_results,
   names(long_go)[2] <- "gene.id"
   # merge into expression and DE data
   final <- de_data[['final']]
+  if (is.null(final)) stop("df 'final' does not exist")
   final <- merge(final, long_go, by="gene.id")
   # filter GO terms by size
   terms <- subset(go_results, Annotated <= maxsize & Annotated > minsize)$GO.ID
-  print(terms)
   final <- subset(final, go.id %in% terms)
   # prepare the dataframe
   # melt means and standard errors to one column each
   mean_cols <- de_data[['mean_cols']]
   mean_colnames <- names(final)[mean_cols]
   sem_colnames <- names(final)[mean_cols + 1]
-  melted_means <- melt(final[,c('gene.id', mean_colnames)], 
-                       id='gene.id', variable.name='sample',
-                       value.name='mean')
+  melted_means <- reshape2:::melt.data.frame(final[,c('gene.id', mean_colnames)], 
+                       id='gene.id', variable.name="sample",
+                       value.name="mean")
+  print(summary(melted_means))
   melted_means$sample <- gsub(melted_means$sample,
                               pattern="\\.mean",
                               replacement="")
-  melted_sems <- melt(final[,c('gene.id', sem_colnames)], 
-                       id='gene.id', variable.name='sample',
-                       value.name='sem')
+  melted_sems <- reshape2:::melt.data.frame(final[,c('gene.id', sem_colnames)], 
+                       id='gene.id', variable.name="sample",
+                       value.name="sem")
   melted_sems$sample <- gsub(melted_sems$sample,
                              pattern="\\.stderr",
                              replacement="")
@@ -121,14 +118,16 @@ plot_detailed_GO <- function(go_results,
                          'go.id', 'Description', 
                          'Term', 'Ontology')],
                 by='gene.id')
-  print(unique(data$term))
-  print(length(which(is.na(data))))
+  data <- unique(data)
   # copy pattern ordering from go_results
   # TODO: structure patterns of de_results[['final']] properly
   data$pattern <- factor(data$pattern, levels=levels(go_results$Pattern), ordered=TRUE)
   # plot
   for(term in terms) {
-    plotdata <- unique(subset(data, go.id == term))
+    if (term == "NA" || is.na(term)) {
+      stop("GO term is NA")
+    }
+    plotdata <- subset(data, go.id == term)
     title <- paste(plotdata[1,c('Ontology', 'Term', 'go.id')], collapse="-")
     plot_term(term, plotdata, title)
   }
@@ -146,7 +145,10 @@ plot_detailed_GO <- function(go_results,
 #' within each barplot being log expression count.
 plot_term <- function(term, d, title, save=TRUE) {
   if(title == "NA-NA-NA") {
-    print(d)
+    # this works around a weird bug where an all-NA title appears
+    # seemingly out of nowhere.
+    # TODO: figure out where the bug comes from 
+    return()
   }
   get_package("ggplot2")
   get_package("grid")
@@ -156,7 +158,7 @@ plot_term <- function(term, d, title, save=TRUE) {
   newlevels <- gsub(levels(d$pattern), pattern="_", replacement=" ")
   newlevels <- gsub('(.{1,15})(\\s|$)', '\\1\n', newlevels) # split levels at 15 chars
   levels(d$pattern) <- newlevels
-  p <- ggplot(arrange(d, pattern), aes(x=reorder(factor(gene), mean, range),
+  p <- ggplot(arrange(d, pattern), aes(x=reorder(factor(gene), mean, FUN=gap),
                                        y=mean, 
                                        fill=factor(sample))) +
     geom_bar(stat="identity", position=position_dodge(0.9)) +
@@ -183,22 +185,25 @@ plot_term <- function(term, d, title, save=TRUE) {
                                      vjust=0.5),
           axis.text.y = element_text(angle=90, hjust=0.5)) +
     facet_grid(.~pattern, scales="free_x", space="free_x") +
-    xlab("gene")
+    xlab("gene description (locus ID)") +
+    xlab("mean normalised count")
     # # rotate the plot
     # g <- ggplotGrob(p)
     # g <- grid.raster(g, vp=viewport(angle=90))
     # print(g)
   if (save) {
-    term <- gsub(x=title, pattern="'", replacement="")
-    term <- gsub(x=title, pattern=" ", replacement="_")
+    title <- gsub(x=title, pattern="'", replacement="")
+    title <- gsub(x=title, pattern=" ", replacement="_")
+    title <- gsub(x=title, pattern="/", replacement="-")
+    filename <- paste("plots/", title, ".pdf", sep="")
     pdf(
-      paste("plots/", title, ".pdf", sep=""),
-      width=dim(d)[1],
-      height=7,
-      paper="a4r"
+      filename,
+      width=dim(d)[1]*0.5,
+      height=7
     )
     print(p)
     dev.off()
+    rotate_PDF(filename)
   }
   # print(p)
   return(p)
@@ -392,4 +397,19 @@ perform_GO_enrichment <- function(de_data,
     }
   }
   return(results)
+}
+
+gap <- function(v) {
+  return(max(v) - min(v))
+}
+
+#' Rotate all PDFs in the current directory
+#' using pdftk, only if this is a Linux system
+#' and pdftk is installed
+rotate_PDF <- function(file) {
+  if (Sys.info()['sysname'] == "Linux") {
+    outfile <- gsub(file, pattern="\\.pdf", replacement="_v\\.pdf")
+    system(paste("pdftk \"", file, "\" cat 1east output \"", outfile, "\"", sep=""))
+    unlink(file)
+  }
 }

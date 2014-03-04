@@ -199,7 +199,7 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=25) {
 #' @return list, de_data with added mean and error columns for each condition
 add_means_and_errors <- function(de_data, conditions) {
   final <- de_data[['final']]
-  n_conds <- length(unique(conds))
+  n_conds <- length(unique(conditions))
   n_cols <- ncol(final)
   mean_cols <- c()
   for (cond in unique(conditions)) {

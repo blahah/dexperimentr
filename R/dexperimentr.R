@@ -2,16 +2,18 @@
 binary_DE_workflow <- function(expression_file,
                                conditions,
                                annotation_file,
-                               GO_mappings_file) {
+                               GO_mappings_file,
+                               long_mappings_file,
+                               named_patterns) {
   ## 0. Import and prepare the data
 
   # load the expression counts file
-  expression_data <- read.table(expression_file)
+  expression_data <- read.csv(expressionfile, as.is=T, sep="\t")
   
   # convert first column to row names if necessary
-  if (conditions < ncol(expression_data)) {
+  if (length(conds) < ncol(expression_data)) {
     # name rows with gene IDs
-    rownames <- expression_data[,1]
+    rownames(expression_data) <- expression_data[,1]
     
     # convert to matrix, discard old gene id column
     expression_data <- as.data.frame(expression_data[,-1])
@@ -20,22 +22,29 @@ binary_DE_workflow <- function(expression_file,
   }
   
   ## 1. Count-data quality control
-  expression_data <- count_data_QC(expression_data)
+  expression_data <- count_data_QC(expression_data, conditions)
   
   ## 2. Infer differential expression
   res <- infer_DE(counts=expression_data, 
-                  conditions=conds, 
+                  conditions=conditions, 
                   annotation_file=annotation_file,
-                  emrounds=25)
+                  emrounds=4,
+                  named_patterns=named_patterns,
+                  prob_cutoff=0.99)
   
   ## 3. DE quality control
   diff_expression_QC(res, conds)
   
   ## 4. Gene set enrichment analysis
-  ontology_enrichment(expressiondata = diff_exp_data,
-                    mappingsfile = GO_mappings_file,
-                    ppcutoff = 0.95,
-                    alpha = 0.02)
+  go_res <- ontology_enrichment(res,
+                      GO_mappings_file, 
+                      conditions,
+                      long_mappings_file,
+                      named_patterns,
+                      ppcutoff=0.99,
+                      alpha=0.01)
+
+  return(list(de_res=res, go_res=go_res))
 }
 
 ### Three-way rice-echi-maize
