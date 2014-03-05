@@ -235,6 +235,7 @@ output_pattern_sets <- function(de_data, conditions,
                        1,
                        function(x) paste(pattern(x), collapse='_'))
   # genes below cutoff should have flat pattern
+  # TODO: should be using prob_cols rather than PPDE
   final$pattern[which(final$PPDE < prob_cutoff)] <- 
     paste(rep(1, length(mean_cols)), collapse="_")
   # replace named patterns

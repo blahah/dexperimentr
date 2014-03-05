@@ -65,6 +65,7 @@ plot_high_level_GO <- function(go_results, de_data, longmappingsfile) {
     for (ontname in unique(subset$Ontology)) {
       ontology <- subset[subset$Ontology == ontname,]
       plot_ontology(ontname, ontology, de_data, pattern)
+      stop("just one")
     }
   }
 }
@@ -212,7 +213,8 @@ plot_term <- function(term, d, title, save=TRUE) {
 
 #' Produce a plot with all enriched GO terms and the prop of each pattern
 plot_ontology <- function(ontname, go_results, de_data, pattern, save=TRUE) {
-  print(paste("Plotting", ontname, "ontology"))
+  print(paste("Plotting", ontname, "ontology for pattern:", pattern))
+  get_package('')
   # extract data from de_data
   final <- de_data[['final']]
   mean_cols <- de_data[['mean_cols']]
@@ -220,19 +222,21 @@ plot_ontology <- function(ontname, go_results, de_data, pattern, save=TRUE) {
   d <- final[final$Ontology == ontname,]
   # subset to enriched go terms
   d <- d[d$go.id %in% go_results$GO.ID,]
-  # we only want the pattern and GOid columns
-  d <- d[,c('pattern', 'go.id')]
   # count each pattern per GOid
-  d <- as.data.frame(t(table(d)))
+  # print(t(table(d)))
+  d <- ddply(d, .(pattern, go.id), summarise, freq=length(unique(gene.id)))
+  print(d)
   # convert to percentages, count totals
   d <- ddply(d, .(go.id), function(x) {
     goid <- x$go.id[1]
+    # print(go_results[go_results$GO.ID==goid,])
     total <- go_results$Annotated[go_results$GO.ID==goid][1]
     # TODO: fix these proportions - are we leaving out some counts because
     # they're not significant?
     # START HERE
     data.frame(x, prop = x$Freq / total, total)
   })
+  # print(d)
   # add descriptions
   d <- merge(d, 
              data.frame(go.id=go_results$GO.ID, 
@@ -399,6 +403,8 @@ perform_GO_enrichment <- function(de_data,
   return(results)
 }
 
+#' Return the difference between the minimum
+#' and maximum values in the input
 gap <- function(v) {
   return(max(v) - min(v))
 }
