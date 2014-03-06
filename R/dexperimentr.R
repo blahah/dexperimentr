@@ -4,7 +4,8 @@ binary_DE_workflow <- function(expression_file,
                                annotation_file,
                                GO_mappings_file,
                                long_mappings_file,
-                               named_patterns) {
+                               named_patterns,
+                               emrounds=10) {
   ## 0. Import and prepare the data
 
   # load the expression counts file
@@ -28,7 +29,7 @@ binary_DE_workflow <- function(expression_file,
   res <- infer_DE(counts=expression_data, 
                   conditions=conditions, 
                   annotation_file=annotation_file,
-                  emrounds=4,
+                  emrounds=emrounds,
                   named_patterns=named_patterns,
                   prob_cutoff=0.99)
   

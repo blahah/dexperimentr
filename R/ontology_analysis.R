@@ -44,7 +44,9 @@ ontology_enrichment <- function(de_data,
                             }
                         })
   # preserve input order of pattern names
-  go_results$Pattern <- factor(go_results$Pattern, levels=named_patterns, ordered=TRUE)
+  unnamed_patterns <- setdiff(unique(de_data[['final']]$pattern), named_patterns)
+  pattern_levels <- c(named_patterns, unnamed_patterns)
+  go_results$Pattern <- factor(go_results$Pattern, levels=pattern_levels, ordered=TRUE)
   # make plots
   plot_high_level_GO(go_results, de_data, longmappingsfile)
   plot_detailed_GO(go_results, de_data, longmappingsfile)
@@ -65,7 +67,6 @@ plot_high_level_GO <- function(go_results, de_data, longmappingsfile) {
     for (ontname in unique(subset$Ontology)) {
       ontology <- subset[subset$Ontology == ontname,]
       plot_ontology(ontname, ontology, de_data, pattern)
-      stop("just one")
     }
   }
 }
@@ -187,11 +188,7 @@ plot_term <- function(term, d, title, save=TRUE) {
           axis.text.y = element_text(angle=90, hjust=0.5)) +
     facet_grid(.~pattern, scales="free_x", space="free_x") +
     xlab("gene description (locus ID)") +
-    xlab("mean normalised count")
-    # # rotate the plot
-    # g <- ggplotGrob(p)
-    # g <- grid.raster(g, vp=viewport(angle=90))
-    # print(g)
+    ylab("mean normalised count")
   if (save) {
     title <- gsub(x=title, pattern="'", replacement="")
     title <- gsub(x=title, pattern=" ", replacement="_")
@@ -199,7 +196,7 @@ plot_term <- function(term, d, title, save=TRUE) {
     filename <- paste("plots/", title, ".pdf", sep="")
     pdf(
       filename,
-      width=dim(d)[1]*0.5,
+      width=max(dim(d)[1]*0.5, 7),
       height=7
     )
     print(p)
@@ -214,7 +211,7 @@ plot_term <- function(term, d, title, save=TRUE) {
 #' Produce a plot with all enriched GO terms and the prop of each pattern
 plot_ontology <- function(ontname, go_results, de_data, pattern, save=TRUE) {
   print(paste("Plotting", ontname, "ontology for pattern:", pattern))
-  get_package('')
+  get_package('ggplot2')
   # extract data from de_data
   final <- de_data[['final']]
   mean_cols <- de_data[['mean_cols']]
@@ -223,20 +220,15 @@ plot_ontology <- function(ontname, go_results, de_data, pattern, save=TRUE) {
   # subset to enriched go terms
   d <- d[d$go.id %in% go_results$GO.ID,]
   # count each pattern per GOid
-  # print(t(table(d)))
   d <- ddply(d, .(pattern, go.id), summarise, freq=length(unique(gene.id)))
-  print(d)
   # convert to percentages, count totals
   d <- ddply(d, .(go.id), function(x) {
-    goid <- x$go.id[1]
-    # print(go_results[go_results$GO.ID==goid,])
-    total <- go_results$Annotated[go_results$GO.ID==goid][1]
+    total <- sum(x$freq)
     # TODO: fix these proportions - are we leaving out some counts because
     # they're not significant?
-    # START HERE
-    data.frame(x, prop = x$Freq / total, total)
+    df <- data.frame(x, prop = x$freq / total, total)
+    return(df)
   })
-  # print(d)
   # add descriptions
   d <- merge(d, 
              data.frame(go.id=go_results$GO.ID, 
@@ -351,12 +343,11 @@ perform_GO_enrichment <- function(de_data,
 
   get_package('topGO', bioconductor=TRUE)
   geneID2GO <- readMappings(file = mappingsfile)
-
+  geneID2GO <- geneID2GO[names(geneID2GO) %in% final$gene.id]
   results = data.frame()
-    
   # iterate through patterns performing GO analysis
   for (pattern in unique(final$pattern)) {
-    print(paste("GO enrichment testing for pattern", pattern))
+    print(paste("GO enrichment testing for pattern:", pattern))
     
     allgenes <- 1:dim(final)[1]
     names(allgenes) <- final$gene.id
@@ -364,40 +355,50 @@ perform_GO_enrichment <- function(de_data,
       return(final$pattern[row] == pattern)
     }
     ontologies <- c('BP', 'MF', 'CC')
-    
     # iterate through ontologies testing each separately
     for (ontology in ontologies) {
       print(paste("Fisher testing GO enrichment for ontology", ontology, "in condition:", pattern))
       GOdata <- new("topGOdata",
                     description = "Test", ontology = ontology,
                     allGenes = allgenes, geneSel = topDiffGenes,
-                    nodeSize = 10, annot = annFUN.gene2GO,
-                    gene2GO = geneID2GO)
-      
+                    annot = annFUN.gene2GO, gene2GO = geneID2GO)
+
+      # print(paste("Number of genes in GOdata: ", numGenes(GOdata)))
+      # print(paste("Number of signficant genes: ", numSigGenes(GOdata)))
+      # print(paste("Number of GO terms available: ", length(usedGO(GOdata))))
+      # print(paste("Number of genes in each of 10 random terms:"))
+      # sel.terms <- sample(usedGO(GOdata), 10)
+      # sel.data <- termStat(GOdata, sel.terms)
+      # print(sel.data)
+      # stop("just get the damn stats")
+
       # run fisher test
       resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
-      
-      # write out short-form results
       allRes <- GenTable(GOdata, classicFisher = resultFisher,
-                         orderBy = "classicFisher", ranksOf = "classicFisher", topNodes = 100)
+                         orderBy = "classicFisher", ranksOf = "classicFisher",
+                         topNodes = 100, useLevels=TRUE)
       allRes <- allRes[allRes$classicFisher <= alpha,]
-      write.table(file=paste("results/", ontology, pattern, "GO.csv", sep='_'), 
-                  x=allRes,
-                  row.names=F,
-                  col.names=T,
-                  sep=",")
-      
-      # print graph of signficant nodes
-      printGraph(GOdata, resultFisher, 
-                 firstSigNodes = 15, 
-                 fn.prefix = paste("graphs/", ontology, pattern, sep='_'), 
-                 useInfo = "all", 
-                 pdfSW = TRUE)
-      
-      # save ontology and pattern
-      allRes$Ontology <- ontology
-      allRes$Pattern <- pattern
-      results <- rbind(results, allRes)
+      # TODO: this always gives incorrect numbers in the Annotated column
+      # need to investigate whether topGO is doing this wrongly
+      if (!is.null(allRes) && nrow(allRes) > 0) {
+        print(paste(nrow(allRes), "significantly enriched GO terms found"))
+        write.table(file=paste("results/", ontology, pattern, "GO.csv", sep='_'), 
+                    x=allRes,
+                    row.names=F,
+                    col.names=T,
+                    sep=",")
+        
+        # print graph of signficant nodes
+        printGraph(GOdata, resultFisher, 
+                   firstSigNodes = 15, 
+                   fn.prefix = paste("graphs/", ontology, pattern, sep='_'), 
+                   useInfo = "all", 
+                   pdfSW = TRUE)
+        # save ontology and pattern
+        allRes$Ontology <- ontology
+        allRes$Pattern <- pattern
+        results <- rbind(results, allRes)
+      }
     }
   }
   return(results)

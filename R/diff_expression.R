@@ -48,7 +48,7 @@ infer_DE <- function(counts,
   
   return(de_data)
 }
-
+quit
 #' Perform the differential expression experiment using EBSeq, automatically
 #' selecting either the binary or multiway workflow based on the number of
 #' unique conditions.
@@ -116,7 +116,9 @@ infer_binary_EBSeq <- function(counts, conditions, emrounds=25) {
 
   # merge
   merged <- merge(normcounts, pp, by="row.names", all.x=T)
-  merged <- merge(merged, fc$PostFC, by.x="Row.names", by.y="row.names", all.x=T)
+  merged <- merge(merged, fc$PostFC, 
+                  by.x="Row.names", by.y="row.names", 
+                  all.x=T)
 
   # tidy up merged data
   n <- ncol(merged)
@@ -127,12 +129,10 @@ infer_binary_EBSeq <- function(counts, conditions, emrounds=25) {
   names(merged)[ncol(merged)] <- "log2.FC"
   merged$log2.FC <- log2(merged$log2.FC)
   
-  # store the probability column indices for pattern detection
-  prob_cols <- (ncol(counts)+1):(ncol(counts)+1+ncol(pp))
-  
   return(list(final=merged, 
               results=results,
-              prob_cols=prob_cols))
+              de_prob_cols='PPDE',
+              ee_prob_col='PPEE'))
 }
 
 normalise_counts <- function(counts, normfactors) {
@@ -230,14 +230,26 @@ output_pattern_sets <- function(de_data, conditions,
                                 named_patterns, prob_cutoff) {
   final <- de_data[['final']]
   mean_cols <- de_data[['mean_cols']]
+  de_prob_cols <- de_data[['de_prob_cols']]
+  ee_prob_col <- de_data[['ee_prob_col']]
+  prob_cols <- c(de_prob_cols, ee_prob_col)
   # add patterns
   final$pattern <- apply(final[,mean_cols],
                        1,
                        function(x) paste(pattern(x), collapse='_'))
-  # genes below cutoff should have flat pattern
-  # TODO: should be using prob_cols rather than PPDE
-  final$pattern[which(final$PPDE < prob_cutoff)] <- 
-    paste(rep(1, length(mean_cols)), collapse="_")
+  # genes between EE and DE cutoffs should have no pattern
+  n <- length(unique(conditions))
+  final$pattern[which(apply(final[,prob_cols], 1, 
+    function(x){ 
+      all(x < prob_cutoff) 
+    }))] <- "no significant pattern"
+  # genes above EE cutoff are always labelled as equally expressed
+  final$pattern[which(final[,ee_prob_col] >= prob_cutoff)] <-
+    "equal expression"
+  # genes with flat pattern too
+  flat_pattern <- paste(rep('1', n), collapse="_")
+  flat_pattern_idx <- which(sapply(final$pattern, function(x) { x == flat_pattern}))
+  final$pattern[flat_pattern_idx] <- "equal expression"
   # replace named patterns
   final$pattern <- sapply(final$pattern,
                            function(x) {
@@ -247,20 +259,13 @@ output_pattern_sets <- function(de_data, conditions,
                                return(x)
                              }
                            })
-  # select probable DE genes above cutoff
-  n <- length(unique(conditions))
-  if (n == 2) {
-    sig <- final[which(final$PPDE >= prob_cutoff),]
-  } else {
-    alln <- length(conditions)
-    prob_cols <- (alln + 2):(alln + n + 2)
-    sig <- final[which(apply(final[,prob_cols], 1, function(x) any(x >= prob_cutoff))),]
-  }
+  # select probable DE/EE genes above cutoff
+  sig <- final[which(apply(final[,prob_cols], 1, function(x) {any(x >= prob_cutoff)})),]
   if (!nrow(sig)) {
-    stop("There are no rows with significantly differential expression")
+    stop("There are no rows with significantly differential or equal expression")
   } else {
     print(paste("There were", nrow(sig), "rows (out of", nrow(final), 
-      "tested) with significantly differential expression (>=", prob_cutoff, ")"))
+      "tested) with significantly differential or equal expression (PP >=", prob_cutoff, ")"))
     print(table(sig$pattern))
   }
   patterns <- unique(sig$pattern)
@@ -307,6 +312,13 @@ pattern <- function(x, p=c(1), i=1, j=2) {
   return(pattern)
 }
 
+#' Extract the pattern corresponding to equal expression
+#' across all conditions. Returns a character vector of the pattern
+#' name.
+get_EE_pattern <- function(patterns) {
+  return(names(which(apply(patterns, 1, function(x) { all(x) == 1 })))) 
+}
+
 #' Write out a file containing all DE data collected
 write_results <- function(de_data) {
   print("Writing out all results")
@@ -316,3 +328,4 @@ write_results <- function(de_data) {
               row.names=F,
               col.names=T)
 }
+
