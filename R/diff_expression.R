@@ -268,21 +268,6 @@ output_pattern_sets <- function(de_data, conditions,
       "tested) with significantly differential or equal expression (PP >=", prob_cutoff, ")"))
     print(table(sig$pattern))
   }
-  patterns <- unique(sig$pattern)
-  # export
-  for (pat in patterns) {
-    patsig <- sig[sig$pattern == pat,]
-    if (nrow(patsig)) {
-      print(paste("Saving", nrow(patsig), "significant results for pattern:", pat))
-      write.table(x=patsig,
-                  file=paste(paste(unique(conditions), collapse="_"), pat, ".csv", sep=""),
-                  sep=",",
-                  row.names=F,
-                  col.names=T)
-    } else {
-      print(paste("No signficant results for pattern:", pat))
-    }
-  }
   return(final)
 }
 
@@ -322,10 +307,26 @@ get_EE_pattern <- function(patterns) {
 #' Write out a file containing all DE data collected
 write_results <- function(de_data) {
   print("Writing out all results")
-  write.table(x=de_data[['final']],
+  final <- de_data[['final']]
+  write.table(x=final,
               file="all_DE_data_with_patterns.csv",
               sep=",",
               row.names=F,
               col.names=T)
+  patterns <- unique(final$pattern)
+  # export
+  for (pat in patterns) {
+    patrows <- subset(final, pattern == pat)
+    if (nrow(patrows)) {
+      print(paste("Saving", nrow(patrows), " results for pattern:", pat))
+      write.table(x=patrows,
+                  file=paste(pat, ".csv", sep=""),
+                  sep=",",
+                  row.names=F,
+                  col.names=T)
+    } else {
+      print(paste("No signficant results for pattern:", pat))
+    }
+  }
 }
 
