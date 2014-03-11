@@ -181,7 +181,7 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=25) {
                       pp$PP)
   
   # store the probability column indices for pattern detection
-  de_prob_cols <- names(final)[(ncol(final)-ncol(pp$PP)):(ncol(final))]
+  de_prob_cols <- rownames(patterns)
   # get the no-difference pattern
   ee_prob_col <- get_EE_pattern(patterns)
   # remove the ee col from the de cols
