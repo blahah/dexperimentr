@@ -17,7 +17,6 @@
 ontology_enrichment <- function(de_data,
                                 mappingsfile,
                                 conditions,
-                                longmappingsfile,
                                 named_patterns=list(),
                                 ppcutoff=0.95,
                                 alpha=0.05) {
@@ -33,7 +32,8 @@ ontology_enrichment <- function(de_data,
                         conditions,
                         ppcutoff,
                         alpha)
-  go_results <- go_output[['go_results']]
+  go_results <- go_output[['results']]
+  go_genes <- go_output[['genes']]
   # replace named patterns
   print('replacing pattern names..')
   go_results$Pattern <- sapply(go_results$Pattern,
@@ -48,21 +48,21 @@ ontology_enrichment <- function(de_data,
   unnamed_patterns <- setdiff(unique(de_data[['final']]$pattern), named_patterns)
   pattern_levels <- c(named_patterns, unnamed_patterns)
   go_results$Pattern <- factor(go_results$Pattern, levels=pattern_levels, ordered=TRUE)
+  go_output[['go_results']] <- go_results
   # make plots
-  plot_high_level_GO(go_results, de_data, longmappingsfile)
-  plot_detailed_GO(go_results, de_data, longmappingsfile)
+  plot_high_level_GO(go_output, de_data)
+  plot_detailed_GO(go_output, de_data)
   setwd(wd)
 }
 
 #' Produce a horizontal stacked barplot showing the
 #' proportion of genes in each enriched GO term that
 #' fall into each expression pattern
-plot_high_level_GO <- function(go_results, de_data, longmappingsfile) {
+plot_high_level_GO <- function(go_output, de_data) {
   print("Making high-level GO plots")
-  long_go <- read.csv(longmappingsfile, sep="\t", as.is=TRUE)
-  names(long_go)[2] <- "gene.id"
+  go_results <- go_output[['results']]
+  long_go <- go_output[['genes']]
   de_data[['final']] <- merge(de_data[['final']], long_go, by="gene.id")
-  final <- de_data[['final']]
   for (pattern in unique(go_results$Pattern)) {
     subset <- go_results[go_results$Pattern == pattern,]
     for (ontname in unique(subset$Ontology)) {
@@ -77,17 +77,14 @@ plot_high_level_GO <- function(go_results, de_data, longmappingsfile) {
 #' Bars are grouped by gene, with one bar per gene per
 #' condition, with y equal to the mean normalised expression
 #' count.
-plot_detailed_GO <- function(go_results,
+plot_detailed_GO <- function(go_output,
                              de_data,
-                             longmappingsfile,
                              maxsize = 50,
                              minsize = 2) {
   get_package("reshape2")
   print("Making detailed GO plots")
-  # load long format GO annotation
-  # TODO: remove requirement for two GO annot files
-  long_go <- read.csv(longmappingsfile, sep="\t", as.is=TRUE)
-  names(long_go)[2] <- "gene.id"
+  long_go <- go_output[['genes']]
+  go_results <- go_output[['results']]
   # merge into expression and DE data
   final <- de_data[['final']]
   if (is.null(final)) stop("df 'final' does not exist")
@@ -103,7 +100,6 @@ plot_detailed_GO <- function(go_results,
   melted_means <- reshape2:::melt.data.frame(final[,c('gene.id', mean_colnames)], 
                        id='gene.id', variable.name="sample",
                        value.name="mean")
-  print(summary(melted_means))
   melted_means$sample <- gsub(melted_means$sample,
                               pattern="\\.mean",
                               replacement="")
@@ -118,9 +114,10 @@ plot_detailed_GO <- function(go_results,
   # merge the annotation back in
   data <- merge(melted_means_sems,
                 final[,c('gene.id', 'pattern', 
-                         'go.id', 'Description', 
-                         'Term', 'Ontology')],
+                         'go.id', 'Description',
+                         'Ontology')],
                 by='gene.id')
+  data <- merge(data, go_results[,c('GO.ID', 'Term')], by.x='go.id', by.y='GO.ID')
   data <- unique(data)
   # copy pattern ordering from go_results
   # TODO: structure patterns of de_results[['final']] properly
@@ -131,7 +128,9 @@ plot_detailed_GO <- function(go_results,
       stop("GO term is NA")
     }
     plotdata <- subset(data, go.id == term)
-    title <- paste(plotdata[1,c('Ontology', 'Term', 'go.id')], collapse="-")
+    plotdata$Ontology <- as.character(plotdata$Ontology)
+    plotdata$go.id <- as.character(plotdata$go.id)
+    title <- paste(as.character(plotdata[1,c('Ontology', 'Term', 'go.id')]), collapse="-")
     plot_term(term, plotdata, title)
   }
 }
@@ -225,10 +224,7 @@ plot_ontology <- function(ontname, go_results, de_data, pattern, save=TRUE) {
   # convert to percentages, count totals
   d <- ddply(d, .(go.id), function(x) {
     total <- sum(x$freq)
-    # TODO: fix these proportions - are we leaving out some counts because
-    # they're not significant?
-    df <- data.frame(x, prop = x$freq / total, total)
-    return(df)
+    data.frame(x, prop = x$freq / total, total)
   })
   # add descriptions
   d <- merge(d, 
@@ -346,7 +342,7 @@ perform_GO_enrichment <- function(de_data,
   geneID2GO <- readMappings(file = mappingsfile)
   geneID2GO <- geneID2GO[names(geneID2GO) %in% final$gene.id]
   results = data.frame()
-  genes = data.frame()
+  genes = list()
   # iterate through patterns performing GO analysis
   for (pattern in unique(final$pattern)) {
     print(paste("GO enrichment testing for pattern:", pattern))
@@ -385,8 +381,7 @@ perform_GO_enrichment <- function(de_data,
       if (!is.null(allRes) && nrow(allRes) > 0) {
         go.ids <- allRes$GO.ID
         res.genes <- genesInTerm(GOdata, go.ids)
-        print(summary(res.genes))
-        stop("ENOUGH!")
+        genes <- c(genes, res.genes)
         print(paste(nrow(allRes), "significantly enriched GO terms found"))
         write.table(file=paste("results/", ontology, pattern, "GO.csv", sep='_'), 
                     x=allRes,
@@ -407,7 +402,8 @@ perform_GO_enrichment <- function(de_data,
       }
     }
   }
-  return(results)
+  genes <- go_genes_to_long_go(genes)
+  return(list(results=results, genes=genes))
 }
 
 #' Return the difference between the minimum
@@ -420,9 +416,26 @@ gap <- function(v) {
 #' using pdftk, only if this is a Linux system
 #' and pdftk is installed
 rotate_PDF <- function(file) {
-  if (Sys.info()['sysname'] == "Linux") {
+  if (Sys.info()['sysname'] != "Windows") {
     outfile <- gsub(file, pattern="\\.pdf", replacement="_v\\.pdf")
     system(paste("pdftk \"", file, "\" cat 1east output \"", outfile, "\"", sep=""))
     unlink(file)
   }
 }
+
+go_genes_to_long_go <- function(go_genes) {
+  df <- data.frame()
+  for (go.id in names(go_genes)) {
+    df <- rbind(df, data.frame(gene.id=go_genes[[go.id]], go.id=go.id))
+  }
+  genes <- data.frame()
+  onts <- list(BP=GOBPTerm, MF=GOMFTerm, CC=GOCCTerm)
+  for (ontname in names(onts)) {
+    ont <- onts[[ontname]]
+    term <- ls(ont)
+    genes <- rbind(genes, data.frame(df[df$go.id %in% term,], Ontology=ontname))
+  }
+  print(summary(genes))  
+  return(genes)
+}
+
