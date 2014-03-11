@@ -28,11 +28,12 @@ ontology_enrichment <- function(de_data,
     dir.create(d, showWarnings=FALSE)
   }
 
-  go_results <- perform_GO_enrichment(de_data,
+  go_output <- perform_GO_enrichment(de_data,
                         mappingsfile,
                         conditions,
                         ppcutoff,
                         alpha)
+  go_results <- go_output[['go_results']]
   # replace named patterns
   print('replacing pattern names..')
   go_results$Pattern <- sapply(go_results$Pattern,
@@ -345,6 +346,7 @@ perform_GO_enrichment <- function(de_data,
   geneID2GO <- readMappings(file = mappingsfile)
   geneID2GO <- geneID2GO[names(geneID2GO) %in% final$gene.id]
   results = data.frame()
+  genes = data.frame()
   # iterate through patterns performing GO analysis
   for (pattern in unique(final$pattern)) {
     print(paste("GO enrichment testing for pattern:", pattern))
@@ -381,6 +383,10 @@ perform_GO_enrichment <- function(de_data,
       # TODO: this always gives incorrect numbers in the Annotated column
       # need to investigate whether topGO is doing this wrongly
       if (!is.null(allRes) && nrow(allRes) > 0) {
+        go.ids <- allRes$GO.ID
+        res.genes <- genesInTerm(GOdata, go.ids)
+        print(summary(res.genes))
+        stop("ENOUGH!")
         print(paste(nrow(allRes), "significantly enriched GO terms found"))
         write.table(file=paste("results/", ontology, pattern, "GO.csv", sep='_'), 
                     x=allRes,

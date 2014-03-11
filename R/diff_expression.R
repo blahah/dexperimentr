@@ -243,6 +243,11 @@ output_pattern_sets <- function(de_data, conditions,
     function(x){ 
       all(x < prob_cutoff) 
     }))] <- "no significant pattern"
+  # same for genes with counts too low to infer DE
+    final$pattern[which(apply(final[,prob_cols], 1, 
+    function(x){ 
+      any(is.na(x)) 
+    }))] <- "no significant pattern"
   # genes above EE cutoff are always labelled as equally expressed
   final$pattern[which(final[,ee_prob_col] >= prob_cutoff)] <-
     "equal expression"
