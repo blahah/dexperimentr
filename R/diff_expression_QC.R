@@ -61,10 +61,20 @@ binary_diagnostic_plots <- function(results) {
 
 multiway_diagnostic_plots <- function(results) {
   # basic diagnostic plots
-  PlotPattern(pp.patterns)
-  QQP(results)
-  DenNHist(results)
-  PlotPostVsRawFC(EBOut=results, FCOut=fc)
+  # TODO: plot all pattern shapes along with how many
+  # genes follow each pattern
+
+  pdf('quantile_plots.pdf')  
+  par(mfrow=c(1,1))
+  QQP(results, GeneLevel=T)
+  dev.off()
+
+  pdf('hyperparameter_histograms_vs_prob_density.pdf')  
+  par(mfrow=c(1,1))
+  DenNHist(results, GeneLevel=T)
+  dev.off()
+  
+  par(mfrow=c(1,1))
   plot_convergence(results)
 }
 
@@ -106,8 +116,8 @@ multiway_pattern_plots <- function(de_data) {
 plot_convergence <- function(results) {
   get_package('ggplot2')
   get_package('reshape2')
-  d <- data.frame(alpha=results$Alpha,
-                  beta=results$Beta,
+  d <- data.frame(alpha=results$Alpha[,1],
+                  beta=results$Beta[,1],
                   iteration=1:(length(results$Alpha)))
   d <- melt(d, id='iteration')
   p <- qplot(data=d, x=iteration, 
@@ -165,7 +175,10 @@ plot_prob_dist <- function(probs) {
   if (ncol(d) == 1) {
     p <- ggplot(data=d, aes(x=value)) + geom_density()
   } else {
-    p <- ggplot(data=d, aes(x=value, colour=variable)) + geom_density()
+    p <- ggplot(data=d, aes(x=value, colour=variable)) + 
+            geom_density() + 
+            scale_y_log10() +
+            ylab("log density")
   }
   print(p)
   ggsave(plot=p, filename='prob_dist.pdf')
