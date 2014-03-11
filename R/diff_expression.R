@@ -181,7 +181,11 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=25) {
                       pp$PP)
   
   # store the probability column indices for pattern detection
-  prob_cols <- (ncol(final)-ncol(pp$PP)):(ncol(final))
+  de_prob_cols <- names(final)[(ncol(final)-ncol(pp$PP)):(ncol(final))]
+  # get the no-difference pattern
+  ee_prob_col <- get_EE_pattern(patterns)
+  # remove the ee col from the de cols
+  de_prob_cols <- setdiff(de_prob_cols, ee_prob_col)
   
   # add fold-changes
   fc <- GetMultiFC(results)
@@ -189,7 +193,8 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=25) {
   
   return(list(final=final, 
               results=results, 
-              prob_cols=prob_cols))
+              de_prob_cols=de_prob_cols,
+              ee_prob_col=ee_prob_col))
 }
 
 #' Add means and standard errors to de_data by condition
@@ -249,8 +254,9 @@ output_pattern_sets <- function(de_data, conditions,
       any(is.na(x)) 
     }))] <- "no significant pattern"
   # genes above EE cutoff are always labelled as equally expressed
-  final$pattern[which(final[,ee_prob_col] >= prob_cutoff)] <-
-    "equal expression"
+  print(names(final))
+  print(ee_prob_col)
+  final$pattern[which(final[,ee_prob_col] >= prob_cutoff)] <- "equal expression"
   # genes with flat pattern too
   flat_pattern <- paste(rep('1', n), collapse="_")
   flat_pattern_idx <- which(sapply(final$pattern, function(x) { x == flat_pattern}))
@@ -306,7 +312,8 @@ pattern <- function(x, p=c(1), i=1, j=2) {
 #' across all conditions. Returns a character vector of the pattern
 #' name.
 get_EE_pattern <- function(patterns) {
-  return(names(which(apply(patterns, 1, function(x) { all(x) == 1 })))) 
+  flatrows <- apply(patterns, 1, function(x) { print(x); sum(x) == length(x) })
+  return(rownames(patterns)[which(flatrows)]) 
 }
 
 #' Write out a file containing all DE data collected
