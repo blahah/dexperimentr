@@ -32,7 +32,8 @@ basic_diagnostics <- function(de_data, conditions) {
   if (length(unique(conditions)) == 2) {
     probs <- final[,'PPDE']
   } else {
-    probs <- final[,de_data[['prob_cols']]]
+    prob_cols <- c(de_data[['ee_prob_col']], de_data[['de_prob_cols']])
+    probs <- final[,prob_cols]
   }
   plot_prob_dist(probs)
 }
