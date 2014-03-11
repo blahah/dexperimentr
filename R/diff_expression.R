@@ -254,8 +254,6 @@ output_pattern_sets <- function(de_data, conditions,
       any(is.na(x)) 
     }))] <- "no significant pattern"
   # genes above EE cutoff are always labelled as equally expressed
-  print(names(final))
-  print(ee_prob_col)
   final$pattern[which(final[,ee_prob_col] >= prob_cutoff)] <- "equal expression"
   # genes with flat pattern too
   flat_pattern <- paste(rep('1', n), collapse="_")
@@ -277,7 +275,6 @@ output_pattern_sets <- function(de_data, conditions,
   } else {
     print(paste("There were", nrow(sig), "rows (out of", nrow(final), 
       "tested) with significantly differential or equal expression (PP >=", prob_cutoff, ")"))
-    print(table(sig$pattern))
   }
   return(final)
 }
@@ -312,7 +309,7 @@ pattern <- function(x, p=c(1), i=1, j=2) {
 #' across all conditions. Returns a character vector of the pattern
 #' name.
 get_EE_pattern <- function(patterns) {
-  flatrows <- apply(patterns, 1, function(x) { print(x); sum(x) == length(x) })
+  flatrows <- apply(patterns, 1, function(x) { sum(x) == length(x) })
   return(rownames(patterns)[which(flatrows)]) 
 }
 
