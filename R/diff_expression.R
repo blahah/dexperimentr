@@ -275,6 +275,11 @@ output_pattern_sets <- function(de_data, conditions,
   } else {
     print(paste("There were", nrow(sig), "rows (out of", nrow(final), 
       "tested) with significantly differential or equal expression (PP >=", prob_cutoff, ")"))
+    write.table(x=table(sig$pattern),
+                file="significant_genes_per_pattern.csv",
+                sep=",",
+                row.names=F,
+                col.names=T)
   }
   return(final)
 }
