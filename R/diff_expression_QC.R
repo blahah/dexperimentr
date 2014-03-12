@@ -82,17 +82,31 @@ multiway_pattern_plots <- function(de_data) {
   # write out pattern plot
   get_package('ggplot2')
   get_package('reshape2')
-  patterns <- as.data.frame(patterns)
-  patterns$pattern <- rownames(patterns)
-  patterns.melted <- melt(patterns, id='pattern')
-  p <- ggplot(patterns.melted, aes(pattern, variable, fill=factor(value))) +
-    geom_tile() +
-    scale_fill_brewer(palette="Paired", guide=F) +
-    xlab('Pattern') +
-    ylab('Condition') +
-    labs(fill='') +
-    coord_flip()
-  ggsave('expression_patterns.pdf', p, width=6, height=6)
+  num_patterns <- de_data[['num_patterns']]
+  num_patterns <- sapply(num_patterns, function(x) {
+    lapply(strsplit(x, '_', fixed=T), as.numeric)
+  })
+  expanded_np <- data.frame()
+  for (pattern in num_patterns) {
+    expanded_np <- rbind(expanded_np, pattern)
+  }
+  names(expanded_np) <- unique(de_data[['conditions']])
+  patterns <- data.frame(pattern=de_data[['word_patterns']], expanded_np)
+  patterns.melted <- melt(patterns, id="pattern")
+  print(patterns.melted)
+  patterns.melted$pattern <- clean_strings(patterns.melted$pattern)
+  patterns.melted$variable <- underscore_to_space(patterns.melted$variable)
+  patterns.melted$value <- as.numeric(patterns.melted$value)
+  p <- ggplot(patterns.melted, aes(variable, factor(value))) +
+          geom_bar(stat="identity", position="dodge") +
+          facet_grid(pattern~., scales="free_y") +
+          scale_fill_brewer(palette="Paired", guide=F) +
+          xlab('Condition') +
+          ylab('Level')
+  print(p)
+  ggsave('expression_patterns.pdf', p, 
+          width=length(names(expanded_np))*0.8, 
+          height=length(unique(patterns$pattern))*0.8)
   
   # Count the genes in each pattern (PP >= 0.95)
   final.df <- as.data.frame(final)
@@ -182,4 +196,26 @@ plot_prob_dist <- function(probs) {
   }
   print(p)
   ggsave(plot=p, filename='prob_dist.pdf')
+}
+
+underscore_to_space <- function(x) {
+  return(sapply(x, function(y) {
+    a <- gsub(as.character(y),
+            pattern="_",
+            replacement=" ")
+    return(a)
+  }))
+}
+
+wrap_long_strings <- function(x, length=25) {
+  sapply(x, function(y) {
+    z <- gsub('(.{1,12})(\\s)', '\\1\n', y)
+    print(z)
+  })
+}
+
+clean_strings <- function(x) {
+  x <- underscore_to_space(x)
+  x <- wrap_long_strings(x)
+  return(x)
 }

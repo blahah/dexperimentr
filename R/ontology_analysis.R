@@ -36,14 +36,7 @@ ontology_enrichment <- function(de_data,
   go_genes <- go_output[['genes']]
   # replace named patterns
   print('replacing pattern names..')
-  go_results$Pattern <- sapply(go_results$Pattern,
-                          function(x) {
-                            if (x %in% names(named_patterns)) {
-                              return(named_patterns[[x]])
-                            } else {
-                              return(x)
-                            }
-                        })
+  go_results$Pattern <- replace_patterns(go_results$Pattern, named_patterns)
   # preserve input order of pattern names
   unnamed_patterns <- setdiff(unique(de_data[['final']]$pattern), named_patterns)
   pattern_levels <- c(named_patterns, unnamed_patterns)

@@ -38,8 +38,12 @@ infer_DE <- function(counts,
     stop("method not supported")
   }
   de_data <- add_means_and_errors(de_data, conditions)
-  de_data[['final']] <- output_pattern_sets(de_data, conditions, 
-                                            named_patterns, prob_cutoff)
+  pattern_data <- output_pattern_sets(de_data, conditions, 
+                                      named_patterns, prob_cutoff)
+  de_data[['final']] <- pattern_data[['final']]
+  de_data[['num_patterns']] <- pattern_data[['num_patterns']]
+  de_data[['word_patterns']] <- replace_patterns(pattern_data[['num_patterns']],
+                                                 named_patterns)
   de_data[['final']] <- merge_annotation(de_data[['final']], annotation_file)
   write_results(de_data)
   
@@ -242,6 +246,7 @@ output_pattern_sets <- function(de_data, conditions,
   final$pattern <- apply(final[,mean_cols],
                        1,
                        function(x) paste(pattern(x), collapse='_'))
+  num_patterns <- unique(final$pattern)
   # genes between EE and DE cutoffs should have no pattern
   n <- length(unique(conditions))
   final$pattern[which(apply(final[,prob_cols], 1, 
@@ -260,14 +265,7 @@ output_pattern_sets <- function(de_data, conditions,
   flat_pattern_idx <- which(sapply(final$pattern, function(x) { x == flat_pattern}))
   final$pattern[flat_pattern_idx] <- "equal expression"
   # replace named patterns
-  final$pattern <- sapply(final$pattern,
-                           function(x) {
-                             if (x %in% names(named_patterns)) {
-                               return(named_patterns[[x]])
-                             } else {
-                               return(x)
-                             }
-                           })
+  final$pattern <- replace_patterns(final$pattern, named_patterns)
   # select probable DE/EE genes above cutoff
   sig <- final[which(apply(final[,prob_cols], 1, function(x) {any(x >= prob_cutoff)})),]
   if (!nrow(sig)) {
@@ -281,7 +279,7 @@ output_pattern_sets <- function(de_data, conditions,
                 row.names=F,
                 col.names=T)
   }
-  return(final)
+  return(list(final=final, num_patterns=num_patterns))
 }
 
 #' Reduce a sequence of numbers to its pattern of changes.
@@ -308,6 +306,17 @@ pattern <- function(x, p=c(1), i=1, j=2) {
     pattern = pattern + abs(min(pattern)) + 1
   }
   return(pattern)
+}
+
+replace_patterns <- function(patterns, named_patterns) {
+  sapply(patterns,
+         function(x) {
+           if (x %in% names(named_patterns)) {
+             return(named_patterns[[x]])
+           } else {
+             return(x)
+           }
+         })
 }
 
 #' Extract the pattern corresponding to equal expression
