@@ -16,6 +16,7 @@ diff_expression_QC <- function(de_data, conditions) {
   } else {
     # multiway
     multiway_diagnostic_plots(results)
+    multiway_pattern_plots(de_data)
   }
   
   setwd(wd)
@@ -91,40 +92,43 @@ multiway_pattern_plots <- function(de_data) {
     expanded_np <- rbind(expanded_np, pattern)
   }
   names(expanded_np) <- unique(de_data[['conditions']])
-  patterns <- data.frame(pattern=de_data[['word_patterns']], expanded_np)
-  patterns.melted <- melt(patterns, id="pattern")
+  patterns <- data.frame(pattern=de_data[['word_patterns']], 
+                         original=names(de_data[['word_patterns']]),
+                         expanded_np)
+  patterns.melted <- melt(patterns, id=c("pattern", "original"))
   print(patterns.melted)
   patterns.melted$pattern <- clean_strings(patterns.melted$pattern)
   patterns.melted$variable <- underscore_to_space(patterns.melted$variable)
   patterns.melted$value <- as.numeric(patterns.melted$value)
   p <- ggplot(patterns.melted, aes(variable, factor(value))) +
-          geom_bar(stat="identity", position="dodge") +
+          geom_line(aes(colour=original, group=original)) +
           facet_grid(pattern~., scales="free_y") +
-          scale_fill_brewer(palette="Paired", guide=F) +
           xlab('Condition') +
-          ylab('Level')
+          ylab('Level') +
+          guides(colour=FALSE) +
+          scale_x_discrete(expand=c(0.1,0.1)) +
+          theme_bw(base_size=9)
   print(p)
   ggsave('expression_patterns.pdf', p, 
           width=length(names(expanded_np))*0.8, 
           height=length(unique(patterns$pattern))*0.8)
   
-  # Count the genes in each pattern (PP >= 0.95)
-  final.df <- as.data.frame(final)
-  names(final.df)[1] <- 'Echi1'
-  final.df$rgi <- rownames(final)
-  final.df <- final.df[-which(is.na(allgenes)),]
-  countsig <- function(f) {
-    length(which(f >= 0.95))
-  }
-  
-  pcs <- apply(final.df[9:13],2,countsig)
-  pattern.counts <- data.frame(pattern=names(pcs), count=pcs)
-  q<- ggplot(pattern.counts, aes(pattern, count)) +
+  # Plot number of genes in each pattern
+  pattern.counts <- melt(table(de_data[['final']]$pattern))
+  names(pattern.counts) <- c('pattern', 'count')
+  pattern.counts$pattern <- clean_strings(pattern.counts$pattern)
+  q <- ggplot(pattern.counts, aes(reorder(pattern, -count), count)) +
     geom_bar(stat='identity') +
-    geom_text(aes(y=count-100, label=count, colour=T)) +
-    scale_colour_brewer(palette="Paired", guide=F) +
-    ggtitle('Count of genes with a posterior probability >= 0.95 of\n following each expression pattern')
-  ggsave('gene_count_by_expression_pattern.pdf', q)
+    # geom_text(aes(y=count+(max(count)/80), label=count, colour=T)) +
+    # ggtitle('Count of genes following each expression pattern') +
+    theme_bw(base_size=9) + 
+    # theme(axis.text.x = element_text(angle=90, hjust=1,
+    #                                  vjust=0.5)) +
+    xlab('pattern') + ylab('number of genes')
+  print(q)
+  ggsave('gene_count_by_expression_pattern.pdf', q,
+         width=length(pattern.counts$pattern)*0.8,
+         height=2)
 }
 
 plot_convergence <- function(results) {
