@@ -33,7 +33,8 @@ output_pattern_sets <- function(de_data, conditions,
   flat_pattern <- paste(rep('1', n), collapse="_")
   flat_pattern_idx <- which(sapply(final$pattern, function(x) { x == flat_pattern}))
   final$pattern[flat_pattern_idx] <- "equal expression"
-  # replace named patterns
+  # replace named patterns, saving the originals
+  final$raw_pattern <- final$pattern
   final$pattern <- replace_patterns(final$pattern, named_patterns)
   # select probable DE/EE genes above cutoff
   sig <- final[which(apply(final[,prob_cols], 1, function(x) {any(x >= prob_cutoff)})),]
