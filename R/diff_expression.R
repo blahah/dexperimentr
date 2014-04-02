@@ -23,7 +23,7 @@ infer_DE <- function(counts,
                      conditions, 
                      annotation_file,
                      method="EBSeq",
-                     emrounds=25,
+                     emrounds=5,
                      named_patterns=list(),
                      prob_cutoff=0.95) {
   # create a directory for the outputs
@@ -52,7 +52,7 @@ infer_DE <- function(counts,
   
   return(de_data)
 }
-quit
+
 #' Perform the differential expression experiment using EBSeq, automatically
 #' selecting either the binary or multiway workflow based on the number of
 #' unique conditions.
@@ -68,7 +68,7 @@ quit
 #'            diagnostic plots and QC)
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
-infer_EBSeq <- function(counts, conditions, emrounds=25) {
+infer_EBSeq <- function(counts, conditions, emrounds=5) {
   get_package('EBSeq', bioconductor=TRUE)
   ncond = length(unique(conditions))
   if (ncond < 2) {
@@ -96,7 +96,7 @@ infer_EBSeq <- function(counts, conditions, emrounds=25) {
 #'            diagnostic plots and QC)
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
-infer_binary_EBSeq <- function(counts, conditions, emrounds=25) {  
+infer_binary_EBSeq <- function(counts, conditions, emrounds=5) {  
   counts <- data.matrix(counts)
   
   # normalization factors
@@ -156,7 +156,7 @@ normalise_counts <- function(counts, normfactors) {
 #'            diagnostic plots and QC)
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
-infer_multiway_EBSeq <- function(counts, conditions, emrounds=25) {
+infer_multiway_EBSeq <- function(counts, conditions, emrounds=5) {
   counts <- data.matrix(counts)
   
   # conditions
@@ -171,18 +171,30 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=25) {
                          Conditions=conditions,
                          AllParti=patterns,
                          sizeFactors=normfactors,
-                         maxround=emrounds)
+                         maxround=emrounds,
+                         Alpha=1.1,
+                         Beta=0.68,
+                         fixHyper=TRUE)
+  print(results$Alpha)
+  print(results$Beta)
   
   # parse results
   pp <- GetMultiPP(results)
+
+  # add fold-changes
+  fc <- GetMultiFC(results)
 
   # normalise counts
   normcounts <- normalise_counts(counts, normfactors)
   
   # merge counts and DE
-  final <- data.frame(gene.id=rownames(counts),
-                      normcounts,
-                      pp$PP)
+  merged <- merge(normcounts, pp$PP, by="row.names", all.x=T)
+  merged <- merge(merged, fc$PostFCMat, 
+                  by.x="Row.names", by.y="row.names", 
+                  all.x=T)
+  merged <- merge(merged, fc$Log2PostFCMat, 
+                  by.x="Row.names", by.y="row.names", 
+                  all.x=T)
   
   # store the probability column indices for pattern detection
   de_prob_cols <- rownames(patterns)
@@ -191,11 +203,7 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=25) {
   # remove the ee col from the de cols
   de_prob_cols <- setdiff(de_prob_cols, ee_prob_col)
   
-  # add fold-changes
-  fc <- GetMultiFC(results)
-  final <- cbind(final, fc$PostFCMat, fc$Log2PostFCMat)
-  
-  return(list(final=final, 
+  return(list(final=merged, 
               results=results, 
               de_prob_cols=de_prob_cols,
               ee_prob_col=ee_prob_col))
