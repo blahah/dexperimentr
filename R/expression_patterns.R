@@ -61,7 +61,8 @@ multiway_directional_patterns <- function(de_data, prob_cutoff) {
   patterns <- de_data[['results']]$AllParti
   final$pattern <- "no significant pattern"
   for (pattern in prob_cols) {
-    pat_rows <- final[,pattern] >= prob_cutoff
+    pat_rows <- which(final[,pattern] >= prob_cutoff)
+    if (length(pat_rows) == 0) next
     means <- final[pat_rows, mean_cols]
     basic_pattern <- patterns[pattern,]
     names(means) <- names(basic_pattern)
@@ -246,7 +247,7 @@ permute_repeat_names <- function(x, reps) {
       stop <- start + len - 1
       if (start > (laststop + 1)) {
         # insert preceding names that don't need permuting
-        noperm_names <- names(x)[laststop+1:start-1]
+        noperm_names <- names(x)[(laststop+1):(start-1)]
         noperm_names <- sapply(noperm_names, as.character)
         all <- append(all, noperm_names)
       } 
@@ -260,12 +261,11 @@ permute_repeat_names <- function(x, reps) {
     }
   }
   # permute all combinations of the sets of repeat names
-  all <- expand.grid(all, stringsAsFactors=FALSE)
-  all <- split(all, rownames(all))
-  perms <- lapply(all, function(y) {
+  all.grid <- expand.grid(all, stringsAsFactors=FALSE)
+  all.split <- split(all.grid, rownames(all.grid))
+  perms <- lapply(all.split, function(y) {
     pattern <- x
     names(pattern) <- unlist(y)
-    return(pattern)
   })
   return(perms)
 }
