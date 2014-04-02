@@ -175,8 +175,6 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=5) {
                          Alpha=1.1,
                          Beta=0.68,
                          fixHyper=TRUE)
-  print(results$Alpha)
-  print(results$Beta)
   
   # parse results
   pp <- GetMultiPP(results)
@@ -194,7 +192,8 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=5) {
                   all.x=T)
   merged <- merge(merged, fc$Log2PostFCMat, 
                   by.x="Row.names", by.y="row.names", 
-                  all.x=T)
+                  all.x=T, suffixes=c('', '.log2'))
+  names(merged)[1] <- "gene.id"
   
   # store the probability column indices for pattern detection
   de_prob_cols <- rownames(patterns)
@@ -235,8 +234,13 @@ add_means_and_errors <- function(de_data, conditions) {
 #' Create a data frame with all expression, DE and annotation data
 merge_annotation <- function(de_data, annotation_file, by='gene.id') {
   annot <- read.csv(annotation_file, head=T, as.is=T)
-  
+
   # annotation file must have a column with name gene.id
+  # otherwise we assume the first column is the gene id  
+  if (!(by %in% names(annot))) {
+    names(annot)[1] <- by
+  }
+
   output <- merge(de_data, annot, by=by, all.x=T)
   
   return(unique(output))
