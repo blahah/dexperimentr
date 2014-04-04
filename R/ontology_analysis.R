@@ -41,7 +41,7 @@ ontology_enrichment <- function(de_data,
   unnamed_patterns <- setdiff(unique(de_data[['final']]$pattern), named_patterns)
   pattern_levels <- c(named_patterns, unnamed_patterns)
   go_results$Pattern <- factor(go_results$Pattern, levels=pattern_levels, ordered=TRUE)
-  go_output[['go_results']] <- go_results
+  go_output[['results']] <- go_results
   # make plots
   plot_high_level_GO(go_output, de_data)
   plot_detailed_GO(go_output, de_data)
