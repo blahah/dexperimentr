@@ -1,3 +1,11 @@
+#` return a named matrix of patterns from a list
+pattern_matrix <- function(pattern_list, ncond) {
+  patterns <- t(matrix(unlist(pattern_list), nrow=ncond))
+  rownames(patterns) <- names(pattern_list)
+  colnames(patterns) <- as.character(1:ncond)
+  return(patterns)
+}
+
 #' Write out DE information for each DE gene expression pattern
 output_pattern_sets <- function(de_data, conditions, 
                                 named_patterns, prob_cutoff) {
@@ -16,7 +24,14 @@ output_pattern_sets <- function(de_data, conditions,
   } else {
     final$pattern <- multiway_directional_patterns(de_data, prob_cutoff)
   }
-  num_patterns <- unique(final$pattern)
+  num_patterns <- lapply(unique(final$pattern),function(x) {
+    if (x == "no significant pattern") {
+      return(paste(rep(0, length(unique(conditions))), collapse='_'))
+    } else {
+      x
+    }
+  })
+
   # genes between EE and DE cutoffs should have no pattern
   final$pattern[which(apply(final[,prob_cols], 1, 
     function(x){ 
@@ -60,7 +75,10 @@ multiway_directional_patterns <- function(de_data, prob_cutoff) {
   prob_cols <- c(de_prob_cols, ee_prob_col)
   patterns <- de_data[['results']]$AllParti
   final$pattern <- "no significant pattern"
+
   for (pattern in prob_cols) {
+    pat_string <- paste(patterns[pattern,], collapse="_")
+    print(paste("converting pattern", pat_string, "to directional"))
     pat_rows <- which(final[,pattern] >= prob_cutoff)
     if (length(pat_rows) == 0) next
     means <- final[pat_rows, mean_cols]
@@ -69,20 +87,15 @@ multiway_directional_patterns <- function(de_data, prob_cutoff) {
     all <- all_directional_patterns(basic_pattern)
     all.sorted <- lapply(all, sort)
     final$pattern[pat_rows] <- apply(means, 1, function(x) {
-      result = tryCatch({
-        patrows <- lapply(all.sorted, function(y) {
-          all(names(y) == names(sort(x)))
-        })
-        pat <- all[which(unlist(patrows))]
-        pat <- paste(unlist(pat), collapse="_")
-        return(pat)
-      }, error = function(e) {
-        print('all')
-        print(all)
-        print('basic_pattern')
-        print(basic_pattern)
-        return("error")
+      patrows <- lapply(all.sorted, function(y) {
+        all(names(y) == names(sort(x)))
       })
+      pat <- all[which(unlist(patrows))]
+      pat <- paste(unlist(pat), collapse="_")
+      if (pat == "") {
+        print("wtf")
+      }
+      return(pat)
     })
   }
   return(final$pattern)
@@ -122,11 +135,18 @@ all_directional_patterns <- function(x) {
     perms <- permute_pattern(noreps)
     recomp_perms <- list()
     for (perm in perms) {
+      # permute the names for the repeats
       r <- recompose_repeats(perm, reps)
       names(r) <- names(x)
-      r <- permute_repeat_names(list(r), reps)
-      recomp_perms <- c(recomp_perms, r)
+      name_perms <- permute_repeat_names(list(r), reps)
+      # output one list per permutation
+      for (p in name_perms) {
+        r2 <- r
+        names(r2) <- p
+        recomp_perms <- c(recomp_perms, list(r2))
+      }
     }
+    print(recomp_perms)
     # restore column ordering if it was changed
     if (!is.null(orig.idx)) {
       recomp_perms <- 
