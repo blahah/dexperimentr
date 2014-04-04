@@ -83,20 +83,24 @@ multiway_pattern_plots <- function(de_data) {
   # write out pattern plot
   get_package('ggplot2')
   get_package('reshape2')
+
   num_patterns <- de_data[['num_patterns']]
-  num_patterns <- sapply(num_patterns, function(x) {
-    lapply(strsplit(x, '_', fixed=T), as.numeric)
-  })
-  expanded_np <- data.frame()
-  for (pattern in num_patterns) {
-    expanded_np <- rbind(expanded_np, pattern)
-  }
+  num_patterns <- sapply(num_patterns, function(x) strsplit(x, '_', fixed=T))
+
+  len.cond <- sapply(num_patterns, function(x) length(x) > 1)
+  num_patterns <- num_patterns[len.cond]
+  num_patterns <- sapply(num_patterns, as.numeric)
+  
+  expanded_np <- t(as.data.frame(num_patterns))
+  print(expanded_np)
   names(expanded_np) <- unique(de_data[['conditions']])
+  if (is.null(names(de_data[['word_patterns']]))) {
+    names(de_data[['word_patterns']]) <- de_data[['word_patterns']]
+  }
   patterns <- data.frame(pattern=de_data[['word_patterns']], 
                          original=names(de_data[['word_patterns']]),
                          expanded_np)
   patterns.melted <- melt(patterns, id=c("pattern", "original"))
-  print(patterns.melted)
   patterns.melted$pattern <- clean_strings(patterns.melted$pattern)
   patterns.melted$variable <- underscore_to_space(patterns.melted$variable)
   patterns.melted$value <- as.numeric(patterns.melted$value)
