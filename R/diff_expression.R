@@ -24,6 +24,7 @@ infer_DE <- function(counts,
                      annotation_file,
                      method="EBSeq",
                      emrounds=5,
+                     patterns=NULL,
                      named_patterns=list(),
                      prob_cutoff=0.95) {
   # create a directory for the outputs
@@ -33,7 +34,7 @@ infer_DE <- function(counts,
   
   # run the analysis
   if (method == "EBSeq") {
-    de_data <- infer_EBSeq(counts, conditions, emrounds=emrounds)
+    de_data <- infer_EBSeq(counts, conditions, emrounds=emrounds, patterns=patterns)
   } else {
     stop("method not supported")
   }
@@ -68,7 +69,7 @@ infer_DE <- function(counts,
 #'            diagnostic plots and QC)
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
-infer_EBSeq <- function(counts, conditions, emrounds=5) {
+infer_EBSeq <- function(counts, conditions, emrounds=5, patterns=NULL) {
   get_package('EBSeq', bioconductor=TRUE)
   ncond = length(unique(conditions))
   if (ncond < 2) {
@@ -78,7 +79,7 @@ infer_EBSeq <- function(counts, conditions, emrounds=5) {
     res <- infer_binary_EBSeq(counts, conditions, emrounds)
   } else {
     # multiway
-    res <- infer_multiway_EBSeq(counts, conditions, emrounds)
+    res <- infer_multiway_EBSeq(counts, conditions, emrounds, patterns)
   }
   return(res)
 }
@@ -156,11 +157,13 @@ normalise_counts <- function(counts, normfactors) {
 #'            diagnostic plots and QC)
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
-infer_multiway_EBSeq <- function(counts, conditions, emrounds=5) {
+infer_multiway_EBSeq <- function(counts, conditions, emrounds=5, patterns=NULL) {
   counts <- data.matrix(counts)
   
   # conditions
-  patterns = GetPatterns(conditions)
+  if (is.null(patterns)) {
+    patterns = GetPatterns(conditions)
+  }
   
   # normalization factors
   normfactors <- MedianNorm(counts)
