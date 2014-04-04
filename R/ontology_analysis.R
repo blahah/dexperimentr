@@ -248,11 +248,13 @@ plot_ontology <- function(ontname, go_results, de_data, pattern, save=TRUE) {
     ggsave(paste("plots/", pattern, "_", ontname, '_GO_enrichment.png', sep=''),
            width=width,
            height=height,
-           units=units)
+           units=units,
+           limitsize=FALSE)
     ggsave(paste("plots/", pattern, "_", ontname, "_GO_enrichment.pdf", sep=''),
            width=width,
            height=height,
-           units=units)
+           units=units,
+           limitsize=FALSE)
   }
   return(p)
 }
