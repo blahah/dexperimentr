@@ -18,7 +18,7 @@ count_data_QC <- function(df, conditions) {
                  conditions, 
                  'without zero rows', 
                  save=TRUE);
-  check_nbinom(df);
+  # check_nbinom(df);
   
   # back to the previous directory
   setwd(wd)
