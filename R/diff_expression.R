@@ -171,10 +171,10 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=5) {
                          Conditions=conditions,
                          AllParti=patterns,
                          sizeFactors=normfactors,
-                         maxround=emrounds,
-                         Alpha=1.1,
-                         Beta=0.68,
-                         fixHyper=TRUE)
+                         maxround=emrounds)
+#                         Alpha=1.1,
+#                         Beta=0.68,
+                         # fixHyper=FALSE)
   
   # parse results
   pp <- GetMultiPP(results)
