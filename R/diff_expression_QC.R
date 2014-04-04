@@ -201,7 +201,8 @@ plot_prob_dist <- function(probs) {
     p <- ggplot(data=d, aes(x=value, colour=variable)) + 
             geom_density() + 
             scale_y_log10() +
-            ylab("log density")
+            ylab("log density") +
+            ylim(1e-02, 1e+04)
   }
   print(p)
   ggsave(plot=p, filename='prob_dist.pdf')
