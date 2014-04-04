@@ -146,7 +146,6 @@ all_directional_patterns <- function(x) {
         recomp_perms <- c(recomp_perms, list(r2))
       }
     }
-    print(recomp_perms)
     # restore column ordering if it was changed
     if (!is.null(orig.idx)) {
       recomp_perms <- 
