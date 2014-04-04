@@ -120,6 +120,7 @@ multiway_pattern_plots <- function(de_data) {
   # Plot number of genes in each pattern
   pattern.counts <- melt(table(de_data[['final']]$pattern))
   names(pattern.counts) <- c('pattern', 'count')
+  pattern.counts <- pattern.counts[-which(pattern.counts$pattern == "no significant pattern")]
   pattern.counts$pattern <- clean_strings(pattern.counts$pattern)
   q <- ggplot(pattern.counts, aes(reorder(pattern, -count), count)) +
     geom_bar(stat='identity') +
