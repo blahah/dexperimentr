@@ -6,17 +6,17 @@ count_data_QC <- function(df, conditions) {
   wd <- getwd()
   dir.create('count_qc', showWarnings=FALSE)
   setwd('./count_qc')
-  
+
   # run the QC analysis
-  plot_log_dists(df, 
-                 conditions, 
-                 'with zero rows', 
+  plot_log_dists(df,
+                 conditions,
+                 'with zero rows',
                  save=TRUE);
   df <- remove_zero_rows(df);
   df <- df + 1
-  plot_log_dists(df, 
-                 conditions, 
-                 'without zero rows', 
+  plot_log_dists(df,
+                 conditions,
+                 'without zero rows',
                  save=TRUE);
   # check_nbinom(df);
   
@@ -40,7 +40,12 @@ plot_log_dists <- function(df, conditions, suffix='', save=FALSE) {
       xlab("log expression count") +
       ggtitle(title)
     print(p)
-    if (save) ggsave(plot=p, file=paste(gsub(title, pattern=' ', replacement='_'), ".pdf", sep=""))
+    if (save) {
+      ggsave(plot=p,
+             file=paste(gsub(title, pattern=' ', replacement='_'),
+                        ".pdf",
+                        sep=""))
+    }
   })
   return(p)
 }
@@ -65,24 +70,24 @@ check_nbinom <- function(df, plots=FALSE) {
 #` returns the distribution most likely to fit the data
 best_distribution <- function(x, plots=TRUE) {
   distributions <- c("pois", "nbinom", "binom")
-  
+
   suppressMessages({
     suppressWarnings({
       fitdata <- lapply(distributions, fit_distribution, x=x)
     })
   })
-  
+
   distributions <- distributions[!is.na(fitdata)]
   fitdata <- remove_na_list(fitdata)
   aics <- lapply(fitdata, function(y) y$aic)
   aics <- remove_na_list(aics)
   distributions <- lapply(fitdata, function(y) y$distname)
-  
+
   if (plots) {
     cdfcomp(fitdata, xlogscale=TRUE, legendtext=distributions, discrete=TRUE)
     denscomp(fitdata, xlim=c(1,100), legendtext=distributions)
   }
-  
+
   return(distributions[which.min(aics)])
 }
 
