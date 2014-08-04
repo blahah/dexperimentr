@@ -1,10 +1,10 @@
 # Differential expression
 
 #' Perform the differential expression workflow
-#' 
-#' 
 #'
-#' @param counts data frame of counts with samples as named columns 
+#'
+#'
+#' @param counts data frame of counts with samples as named columns
 #' and genes as named rows
 #' @param conditions vector of condition names
 #' @param annotation_file string path to a TSV containing annotation data to add
@@ -15,31 +15,35 @@
 #' @return list:
 #' - final: a data frame containing counts, DE probability estimates,
 #'          fold changes, and annotations
-#' - results: the results object output by the DE test (useful for 
+#' - results: the results object output by the DE test (useful for
 #'            diagnostic plots and QC)
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
-infer_DE <- function(counts, 
-                     conditions, 
+infer_DE <- function(counts,
+                     conditions,
                      annotation_file,
                      method="EBSeq",
                      emrounds=5,
                      patterns=NULL,
                      named_patterns=list(),
+                     gene_mappings=NULL,
                      prob_cutoff=0.95) {
   # create a directory for the outputs
   wd <- getwd()
   dir.create('de_data', showWarnings=FALSE)
   setwd('./de_data')
-  
+
   # run the analysis
   if (method == "EBSeq") {
-    de_data <- infer_EBSeq(counts, conditions, emrounds=emrounds, patterns=patterns)
+      de_data <- infer_EBSeq(counts, conditions,
+                             emrounds=emrounds,
+                             patterns=patterns,
+                             gene_mappings=gene_mappings)
   } else {
     stop("method not supported")
   }
   de_data <- add_means_and_errors(de_data, conditions)
-  pattern_data <- output_pattern_sets(de_data, conditions, 
+  pattern_data <- output_pattern_sets(de_data, conditions,
                                       named_patterns, prob_cutoff)
   de_data[['final']] <- pattern_data[['final']]
   de_data[['num_patterns']] <- pattern_data[['num_patterns']]
@@ -47,10 +51,10 @@ infer_DE <- function(counts,
                                                  named_patterns)
   de_data[['final']] <- merge_annotation(de_data[['final']], annotation_file)
   write_results(de_data)
-  
-  # back to the previous directoy
+
+  # back to the previous directory
   setwd(wd)
-  
+
   return(de_data)
 }
 
@@ -58,60 +62,69 @@ infer_DE <- function(counts,
 #' selecting either the binary or multiway workflow based on the number of
 #' unique conditions.
 #'
-#' @param counts data frame of counts with samples as named columns 
+#' @param counts data frame of counts with samples as named columns
 #' and genes as named rows
 #' @param conditions vector of condition names
 #' @param emrounds integer; number of rounds of expectation maximisation to use
 #' @return list:
 #' - final: a data frame containing counts, DE probability estimates,
 #'          fold changes, and annotations
-#' - results: the results object output by the DE test (useful for 
+#' - results: the results object output by the DE test (useful for
 #'            diagnostic plots and QC)
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
-infer_EBSeq <- function(counts, conditions, emrounds=5, patterns=NULL) {
+infer_EBSeq <- function(counts, conditions, emrounds=5, patterns=NULL,
+                        gene_mappings=NULL) {
   get_package('EBSeq', bioconductor=TRUE)
   ncond = length(unique(conditions))
   if (ncond < 2) {
     error("There must be at least two different conditions to perform DE")
   } else if (ncond == 2) {
     # binary
-    res <- infer_binary_EBSeq(counts, conditions, emrounds)
+    res <- infer_binary_EBSeq(counts, conditions, emrounds, gene_mappings)
   } else {
     # multiway
-    res <- infer_multiway_EBSeq(counts, conditions, emrounds, patterns)
+    res <- infer_multiway_EBSeq(counts, conditions, emrounds, patterns, gene_mappings)
   }
   return(res)
 }
 
 #' Perform the binary differential expression experiment using EBSeq
 #'
-#' @param counts data frame of counts with samples as named columns 
+#' @param counts data frame of counts with samples as named columns
 #' and genes as named rows
 #' @param conditions vector of condition names
 #' @param emrounds integer; number of rounds of expectation maximisation to use
 #' @return list:
 #' - final: a data frame containing counts, DE probability estimates,
 #'          fold changes, and annotations
-#' - results: the results object output by the DE test (useful for 
+#' - results: the results object output by the DE test (useful for
 #'            diagnostic plots and QC)
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
-infer_binary_EBSeq <- function(counts, conditions, emrounds=5) {  
+infer_binary_EBSeq <- function(counts, conditions, emrounds=5, gene_mappings) {
   counts <- data.matrix(counts)
-  
+
   # normalization factors
   normfactors <- MedianNorm(counts)
-  
+
   # run
-  results <- EBTest(Data=counts,
-                    Conditions=conditions,
-                    sizeFactors=normfactors,
-                    maxround=emrounds)
-  
+  if (!is.null(gene_mappings)) {
+      results <- EBTest(Data=counts,
+                        Conditions=conditions,
+                        sizeFactors=normfactors,
+                        maxround=emrounds,
+                        NgVector=gene_mappings)
+  } else {
+      results <- EBTest(Data=counts,
+                        Conditions=conditions,
+                        sizeFactors=normfactors,
+                        maxround=emrounds)
+  }
+
   # posterior probabilities
   pp <- GetPPMat(results)
-  
+
   # calculate fold change
   fc <- PostFC(results)
   PlotPostVsRawFC(EBOut=results, FCOut=fc)
@@ -121,20 +134,20 @@ infer_binary_EBSeq <- function(counts, conditions, emrounds=5) {
 
   # merge
   merged <- merge(normcounts, pp, by="row.names", all.x=T)
-  merged <- merge(merged, fc$PostFC, 
-                  by.x="Row.names", by.y="row.names", 
+  merged <- merge(merged, fc$PostFC,
+                  by.x="Row.names", by.y="row.names",
                   all.x=T)
 
   # tidy up merged data
   n <- ncol(merged)
-  merged[,2:n] <- 
+  merged[,2:n] <-
     data.frame(apply(merged[,2:n], 2, as.numeric)) # all cols are strings after merge
 
   names(merged)[1] <- "gene.id"
   names(merged)[ncol(merged)] <- "log2.FC"
   merged$log2.FC <- log2(merged$log2.FC)
-  
-  return(list(final=merged, 
+
+  return(list(final=merged,
               results=results,
               de_prob_cols='PPDE',
               ee_prob_col='PPEE'))
@@ -146,28 +159,29 @@ normalise_counts <- function(counts, normfactors) {
 
 #' Perform the multiway differential expression experiment using EBSeq
 #'
-#' @param counts data frame of counts with samples as named columns 
+#' @param counts data frame of counts with samples as named columns
 #' and genes as named rows
 #' @param conditions vector of condition names
 #' @param emrounds integer; number of rounds of expectation maximisation to use
 #' @return list:
 #' - final: a data frame containing counts, DE probability estimates,
 #'          fold changes, and annotations
-#' - results: the results object output by the DE test (useful for 
+#' - results: the results object output by the DE test (useful for
 #'            diagnostic plots and QC)
 #' - prob_cols: indices of columns containing posterior probabilities
 #' - mean_cols: indices of columns containing mean expression counts
-infer_multiway_EBSeq <- function(counts, conditions, emrounds=5, patterns=NULL) {
+infer_multiway_EBSeq <- function(counts, conditions, emrounds=5,
+                                 patterns=NULL, gene_mappings=NULL) {
   counts <- data.matrix(counts)
-  
+
   # conditions
   if (is.null(patterns)) {
     patterns = GetPatterns(conditions)
   }
-  
+
   # normalization factors
   normfactors <- MedianNorm(counts)
-  
+
   # run
   results <- EBMultiTest(counts,
                          NgVector=NULL,
@@ -178,7 +192,7 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=5, patterns=NULL) 
 #                         Alpha=1.1,
 #                         Beta=0.68,
                          # fixHyper=FALSE)
-  
+
   # parse results
   pp <- GetMultiPP(results)
 
@@ -187,26 +201,26 @@ infer_multiway_EBSeq <- function(counts, conditions, emrounds=5, patterns=NULL) 
 
   # normalise counts
   normcounts <- normalise_counts(counts, normfactors)
-  
+
   # merge counts and DE
   merged <- merge(normcounts, pp$PP, by="row.names", all.x=T)
-  merged <- merge(merged, fc$PostFCMat, 
-                  by.x="Row.names", by.y="row.names", 
+  merged <- merge(merged, fc$PostFCMat,
+                  by.x="Row.names", by.y="row.names",
                   all.x=T)
-  merged <- merge(merged, fc$Log2PostFCMat, 
-                  by.x="Row.names", by.y="row.names", 
+  merged <- merge(merged, fc$Log2PostFCMat,
+                  by.x="Row.names", by.y="row.names",
                   all.x=T, suffixes=c('', '.log2'))
   names(merged)[1] <- "gene.id"
-  
+
   # store the probability column indices for pattern detection
   de_prob_cols <- rownames(patterns)
   # get the no-difference pattern
   ee_prob_col <- get_EE_pattern(patterns)
   # remove the ee col from the de cols
   de_prob_cols <- setdiff(de_prob_cols, ee_prob_col)
-  
-  return(list(final=merged, 
-              results=results, 
+
+  return(list(final=merged,
+              results=results,
               de_prob_cols=de_prob_cols,
               ee_prob_col=ee_prob_col))
 }
@@ -239,13 +253,13 @@ merge_annotation <- function(de_data, annotation_file, by='gene.id') {
   annot <- read.csv(annotation_file, head=T, as.is=T)
 
   # annotation file must have a column with name gene.id
-  # otherwise we assume the first column is the gene id  
+  # otherwise we assume the first column is the gene id
   if (!(by %in% names(annot))) {
     names(annot)[1] <- by
   }
 
   output <- merge(de_data, annot, by=by, all.x=T)
-  
+
   return(unique(output))
 }
 
@@ -274,4 +288,3 @@ write_results <- function(de_data) {
     }
   }
 }
-
