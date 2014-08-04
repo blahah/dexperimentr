@@ -43,6 +43,7 @@ ontology_enrichment <- function(de_data,
   go_results$Pattern <- factor(go_results$Pattern, levels=pattern_levels, ordered=TRUE)
   go_output[['results']] <- go_results
   # make plots
+  setwd('./plots')
   plot_high_level_GO(go_output, de_data)
   plot_detailed_GO(go_output, de_data)
   setwd(wd)
@@ -51,18 +52,23 @@ ontology_enrichment <- function(de_data,
 #' Produce a horizontal stacked barplot showing the
 #' proportion of genes in each enriched GO term that
 #' fall into each expression pattern
-plot_high_level_GO <- function(go_output, de_data) {
+plot_high_level_GO <- function(go_output, de_data, colourset=NULL) {
+  wd <- getwd()
+  dir.create('by_pattern', showWarnings=FALSE)
+  setwd('./by_pattern')
   print("Making high-level GO plots")
   go_results <- go_output[['results']]
   long_go <- go_output[['genes']]
   de_data[['final']] <- merge(de_data[['final']], long_go, by="gene.id")
+  colourmap <- get_colourmap(unique(go_results$Pattern), colourset)
   for (pattern in unique(go_results$Pattern)) {
     subset <- go_results[go_results$Pattern == pattern,]
     for (ontname in unique(subset$Ontology)) {
       ontology <- subset[subset$Ontology == ontname,]
-      plot_ontology(ontname, ontology, de_data, pattern)
+      plot_ontology(ontname, ontology, de_data, pattern, colourmap)
     }
   }
+  setwd(wd)
 }
 
 #' For each enriched GO term produce a plot showing
@@ -73,7 +79,11 @@ plot_high_level_GO <- function(go_output, de_data) {
 plot_detailed_GO <- function(go_output,
                              de_data,
                              maxsize = 50,
-                             minsize = 2) {
+                             minsize = 2,
+                             colourset="Dark2") {
+  wd <- getwd()
+  dir.create('by_term', showWarnings=FALSE)
+  setwd('./by_term')
   get_package("reshape2")
   print("Making detailed GO plots")
   long_go <- go_output[['genes']]
@@ -90,13 +100,13 @@ plot_detailed_GO <- function(go_output,
   mean_cols <- de_data[['mean_cols']]
   mean_colnames <- names(final)[mean_cols]
   sem_colnames <- names(final)[mean_cols + 1]
-  melted_means <- reshape2:::melt.data.frame(final[,c('gene.id', mean_colnames)], 
+  melted_means <- reshape2:::melt.data.frame(final[,c('gene.id', mean_colnames)],
                        id='gene.id', variable.name="sample",
                        value.name="mean")
   melted_means$sample <- gsub(melted_means$sample,
                               pattern="\\.mean",
                               replacement="")
-  melted_sems <- reshape2:::melt.data.frame(final[,c('gene.id', sem_colnames)], 
+  melted_sems <- reshape2:::melt.data.frame(final[,c('gene.id', sem_colnames)],
                        id='gene.id', variable.name="sample",
                        value.name="sem")
   melted_sems$sample <- gsub(melted_sems$sample,
@@ -106,7 +116,7 @@ plot_detailed_GO <- function(go_output,
                              by=c('gene.id', 'sample'))
   # merge the annotation back in
   data <- merge(melted_means_sems,
-                final[,c('gene.id', 'pattern', 
+                final[,c('gene.id', 'pattern',
                          'go.id', 'Description',
                          'Ontology')],
                 by='gene.id')
@@ -115,6 +125,14 @@ plot_detailed_GO <- function(go_output,
   # copy pattern ordering from go_results
   # TODO: structure patterns of de_results[['final']] properly
   data$pattern <- factor(data$pattern, levels=levels(go_results$Pattern), ordered=TRUE)
+  # tidy up pattern names
+  newlevels <- gsub(levels(data$pattern), pattern="_", replacement=" ")
+  newlevels <- gsub('(.{1,15})(\\s|$)', '\\1\n', newlevels) # split levels at 15 chars
+  levels(data$pattern) <- newlevels
+  # generate consistent colour scale
+  data$sample <- as.factor(data$sample)
+  colourmap <- get_colourmap(levels(data$sample), colourset)
+  print(colourmap)
   # plot
   for(term in terms) {
     if (term == "NA" || is.na(term)) {
@@ -123,26 +141,51 @@ plot_detailed_GO <- function(go_output,
     plotdata <- subset(data, go.id == term)
     plotdata$Ontology <- as.character(plotdata$Ontology)
     plotdata$go.id <- as.character(plotdata$go.id)
-    title <- paste(as.character(plotdata[1,c('Ontology', 'Term', 'go.id')]), collapse="-")
-    plot_term(term, plotdata, title)
+    title <- paste(as.character(plotdata[1,c('Ontology', 'Term', 'go.id')]),
+                   collapse="-")
+    plot_term(term, plotdata, title, colourmap)
   }
+  setwd(wd)
+}
+
+#' Generate a colourmap (named vector) mapping pattern names
+#' By default, if the set of patterns has length < 8,
+#' uses the colourblind optimised palette from
+#' http://jfly.iam.u-tokyo.ac.jp/color/ with the yellow moved to end
+#' and grey removed. If > 8, use RColorbrewer. Set name corresponds
+#' to RColorBrewer sets.
+get_colourmap <- function(patterns, set=NULL) {
+  if (is.null(set) && length(patterns) < 8) {
+    colours <- c("#CC79A7", "#56B4E9", "#009E73", "#E69F00",
+                "#0072B2", "#D55E00", "#F0E442")
+    colours <- colours[1:length(patterns)]
+  } else {
+    get_package("RColorBrewer")
+    if (is.null(set)) {
+      set <- "Set1"
+    }
+    colours <- brewer.pal(length(patterns), set)
+  }
+  names(colours) <- patterns
+  return(colours)
 }
 
 #' Produce a plot showing the expression and direction of each gene
 #' in the specified GO term.
-#' 
+#'
 #' If there are two conditions, a horizontal barplot is produced,
 #' with log2 fold change on the x-axis, genes on the y-axis, and
 #' one gene per line.
-#' 
+#'
 #' If there are >2 conditions, a grid of barplots is produced,
 #' with one barplot per gene, one bar per condition, and the y-axis
 #' within each barplot being log expression count.
-plot_term <- function(term, d, title, save=TRUE) {
+plot_term <- function(term, d, title,
+                      colourmap, save=TRUE) {
   if(title == "NA-NA-NA") {
     # this works around a weird bug where an all-NA title appears
     # seemingly out of nowhere.
-    # TODO: figure out where the bug comes from 
+    # TODO: figure out where the bug comes from
     return()
   }
   get_package("ggplot2")
@@ -150,25 +193,22 @@ plot_term <- function(term, d, title, save=TRUE) {
   print(paste("Plotting", title, "GO term"))
   d$gene <- paste(d$Description, " (", d$gene.id, ")", sep="") # add locus IDs to gene names
   d$gene <- gsub('(.{1,25})(\\s|$)', '\\1\n', d$gene) # split lines at 25 chars
-  newlevels <- gsub(levels(d$pattern), pattern="_", replacement=" ")
-  newlevels <- gsub('(.{1,15})(\\s|$)', '\\1\n', newlevels) # split levels at 15 chars
-  levels(d$pattern) <- newlevels
   p <- ggplot(arrange(d, pattern), aes(x=reorder(factor(gene), mean, FUN=gap),
-                                       y=mean, 
-                                       fill=factor(sample))) +
+                                       y=mean,
+                                       fill=sample)) +
     geom_bar(stat="identity", position=position_dodge(0.9)) +
     geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem),
                   colour="black", position=position_dodge(0.9),
                   width=0.2) +
-    scale_fill_brewer(
-      name="Condition", type="qual", palette=4,
+    scale_fill_manual(
+      values=colourmap,
       guide=guide_legend(
-        direction="horizontal", 
+        direction="horizontal",
         label.theme = element_text(angle = 90, face="italic"),
         title.theme = element_text(angle = 90, face="bold"),
         title.hjust = 0.5,
-        label.position="top", 
-        label.hjust = 0.5, 
+        label.position="top",
+        label.hjust = 0.5,
         label.vjust = 0.5
       )
     ) +
@@ -186,7 +226,7 @@ plot_term <- function(term, d, title, save=TRUE) {
     title <- gsub(x=title, pattern="'", replacement="")
     title <- gsub(x=title, pattern=" ", replacement="_")
     title <- gsub(x=title, pattern="/", replacement="-")
-    filename <- paste("plots/", title, ".pdf", sep="")
+    filename <- paste(title, "pdf", sep=".")
     pdf(
       filename,
       width=max(dim(d)[1]*0.5, 7),
@@ -196,13 +236,13 @@ plot_term <- function(term, d, title, save=TRUE) {
     dev.off()
     rotate_PDF(filename)
   }
-  # print(p)
   return(p)
 }
 
 
 #' Produce a plot with all enriched GO terms and the prop of each pattern
-plot_ontology <- function(ontname, go_results, de_data, pattern, save=TRUE) {
+plot_ontology <- function(ontname, go_results, de_data, pattern,
+                          colourmap, save=TRUE) {
   print(paste("Plotting", ontname, "ontology for pattern:", pattern))
   get_package('ggplot2')
   # extract data from de_data
@@ -220,9 +260,9 @@ plot_ontology <- function(ontname, go_results, de_data, pattern, save=TRUE) {
     data.frame(x, prop = x$freq / total, total)
   })
   # add descriptions
-  d <- merge(d, 
-             data.frame(go.id=go_results$GO.ID, 
-                        description=go_results$Term), 
+  d <- merge(d,
+             data.frame(go.id=go_results$GO.ID,
+                        description=go_results$Term),
              by='go.id')
   # order
   d$pattern <- factor(d$pattern, levels=levels(go_results$Pattern), ordered=TRUE)
@@ -239,18 +279,18 @@ plot_ontology <- function(ontname, go_results, de_data, pattern, save=TRUE) {
                        expand = c(0, 0)) +
     scale_x_discrete(name="GO annotation (count of genes)",
                      expand=c(0, 0)) +
-    scale_fill_brewer(name="Enriched in", type="div") +
+    scale_fill_manual(values=colourmap, name="Enriched in") +
     coord_flip()
   if(save) {
     height = (3*dim(d)[1])+60
     width = 300
     units = "mm"
-    ggsave(paste("plots/", pattern, "_", ontname, '_GO_enrichment.png', sep=''),
+    ggsave(paste(pattern, "_", ontname, '_GO_enrichment.png', sep=''),
            width=width,
            height=height,
            units=units,
            limitsize=FALSE)
-    ggsave(paste("plots/", pattern, "_", ontname, "_GO_enrichment.pdf", sep=''),
+    ggsave(paste(pattern, "_", ontname, "_GO_enrichment.pdf", sep=''),
            width=width,
            height=height,
            units=units,
