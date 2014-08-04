@@ -381,7 +381,7 @@ perform_GO_enrichment <- function(de_data,
   # iterate through patterns performing GO analysis
   for (pattern in unique(final$pattern)) {
     print(paste("GO enrichment testing for pattern:", pattern))
-    
+
     allgenes <- 1:dim(final)[1]
     names(allgenes) <- final$gene.id
     topDiffGenes <- function(row) {
@@ -396,21 +396,14 @@ perform_GO_enrichment <- function(de_data,
                     allGenes = allgenes, geneSel = topDiffGenes,
                     annot = annFUN.gene2GO, gene2GO = geneID2GO)
 
-      # print(paste("Number of genes in GOdata: ", numGenes(GOdata)))
-      # print(paste("Number of signficant genes: ", numSigGenes(GOdata)))
-      # print(paste("Number of GO terms available: ", length(usedGO(GOdata))))
-      # print(paste("Number of genes in each of 10 random terms:"))
-      # sel.terms <- sample(usedGO(GOdata), 10)
-      # sel.data <- termStat(GOdata, sel.terms)
-      # print(sel.data)
-      # stop("just get the damn stats")
-
-      # run fisher test
-      resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
-      allRes <- GenTable(GOdata, classicFisher = resultFisher,
-                         orderBy = "classicFisher", ranksOf = "classicFisher",
+      # run weighted (mix of elim and weight algorithms) fisher test
+      result <- runTest(GOdata, 'weight01', 'fisher')
+      allRes <- GenTable(GOdata, weightedFisher = result,
+                         orderBy = "weightedFisher", ranksOf = "weightedFisher",
                          topNodes = 100, useLevels=TRUE)
-      allRes <- allRes[allRes$classicFisher <= alpha,]
+
+      allRes <- allRes[allRes$weightedFisher <= alpha,]
+
       # TODO: this always gives incorrect numbers in the Annotated column
       # need to investigate whether topGO is doing this wrongly
       if (!is.null(allRes) && nrow(allRes) > 0) {
@@ -418,17 +411,17 @@ perform_GO_enrichment <- function(de_data,
         res.genes <- genesInTerm(GOdata, go.ids)
         genes <- c(genes, res.genes)
         print(paste(nrow(allRes), "significantly enriched GO terms found"))
-        write.table(file=paste("results/", ontology, pattern, "GO.csv", sep='_'), 
+        write.table(file=paste(paste("results", ontology, sep="/"), pattern, "GO.csv", sep='_'),
                     x=allRes,
                     row.names=F,
                     col.names=T,
                     sep=",")
-        
+
         # print graph of signficant nodes
-        printGraph(GOdata, resultFisher, 
-                   firstSigNodes = 15, 
-                   fn.prefix = paste("graphs/", ontology, pattern, sep='_'), 
-                   useInfo = "all", 
+        printGraph(GOdata, result,
+                   firstSigNodes = 15,
+                   fn.prefix = paste(paste("graphs", ontology, sep="/"), pattern, sep='_'),
+                   useInfo = "all",
                    pdfSW = TRUE)
         # save ontology and pattern
         allRes$Ontology <- ontology
@@ -468,9 +461,10 @@ go_genes_to_long_go <- function(go_genes) {
   for (ontname in names(onts)) {
     ont <- onts[[ontname]]
     term <- ls(ont)
-    genes <- rbind(genes, data.frame(df[df$go.id %in% term,], Ontology=ontname))
+    if (sum(df$go.id %in% term) > 0) {
+      genes <- rbind(genes, data.frame(df[df$go.id %in% term,], Ontology=ontname))
+    }
   }
-  print(summary(genes))  
+  print(dim(genes))
   return(genes)
 }
-
