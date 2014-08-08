@@ -27,6 +27,8 @@ infer_DE <- function(counts,
                      patterns=NULL,
                      named_patterns=list(),
                      gene_mappings=NULL,
+                     threads=1,
+                     consensus=FALSE,
                      prob_cutoff=0.95) {
   # create a directory for the outputs
   wd <- getwd()
@@ -35,10 +37,19 @@ infer_DE <- function(counts,
 
   # run the analysis
   if (method == "EBSeq") {
-      de_data <- infer_EBSeq(counts, conditions,
-                             emrounds=emrounds,
-                             patterns=patterns,
-                             gene_mappings=gene_mappings)
+    de_data <- infer_EBSeq(counts, conditions,
+                           emrounds=emrounds,
+                           patterns=patterns,
+                           gene_mappings=gene_mappings)
+  } else if (method == "baySeq") {
+    de_data <- infer_baySeq(counts, conditions,
+                            emrounds=emrounds,
+                            patterns=patterns,
+                            gene_mappings=gene_mappings,
+                            threads=threads,
+                            consensus=consensus,
+                            annotation=load_annotation(annotation_file)
+                            )
   } else {
     stop("method not supported")
   }
@@ -56,6 +67,38 @@ infer_DE <- function(counts,
   setwd(wd)
 
   return(de_data)
+}
+
+#' Perform the differential expression experiment using baySeq
+infer_baySeq <- function(counts, conditions,
+                         emrounds, patterns,
+                         gene_mappings, threads,
+                         consensus=FALSE, annotation) {
+  # start
+  get_package('baySeq', bioconductor=TRUE)
+  get_package('snow')
+  # setup cluster
+  cluster <- makeCluster(threads, "SOCK")
+  # setup count data
+  CD <- new("countData",
+            data=counts,
+            replicates=conditions,
+            groups=patterns)
+  libsizes(CD) <- getLibsizes(CD)
+  # setup annotation
+  annotation <- merge(x=data.frame(gene.id=rownames(counts)),
+                      y=annotation,
+                      by='gene.id')
+  annotation <- annotation[,-c('gene.id')]
+  CD@annotation <- annotation
+
+  CD <- getPriors.NB(CD,
+                     samplesize=1000,
+                     estimation="QL",
+                     cl=cluster,
+                     consensus=consensus)
+
+  CD <- getLikelihoods.NB(CD, pET='BIC', cl=cluster)
 }
 
 #' Perform the differential expression experiment using EBSeq, automatically
@@ -250,7 +293,7 @@ add_means_and_errors <- function(de_data, conditions) {
 
 #' Create a data frame with all expression, DE and annotation data
 merge_annotation <- function(de_data, annotation_file, by='gene.id') {
-  annot <- read.csv(annotation_file, head=T, as.is=T)
+  annot <- load_annotation(annotation_file)
 
   # annotation file must have a column with name gene.id
   # otherwise we assume the first column is the gene id
@@ -261,6 +304,11 @@ merge_annotation <- function(de_data, annotation_file, by='gene.id') {
   output <- merge(de_data, annot, by=by, all.x=T)
 
   return(unique(output))
+}
+
+#' Read in an annotation file
+load_annotation <- function(file) {
+  read.csv(file, head=T, as.is=T)
 }
 
 #' Write out a file containing all DE data collected
