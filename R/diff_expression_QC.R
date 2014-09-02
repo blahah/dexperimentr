@@ -25,7 +25,7 @@ diff_expression_QC <- function(de_data, conditions) {
 basic_diagnostics <- function(de_data, conditions) {
   final <- de_data[['final']]
   # plot (normalised) count sanity diagnostics
-  counts <- final[,2:(1+length(conditions))]
+  counts <- de_data$results@data
   try(plot_correlation_matrix(counts))
   try(plot_pca(counts, final$pattern))
   try(plot_count_collision(counts))
