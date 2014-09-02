@@ -70,7 +70,7 @@ infer_DE <- function(counts,
 }
 
 #' Perform the differential expression experiment using baySeq
-infer_baySeq <- function(counts, conditions,
+infer_baySeq <- function(counts, conditions, samplesize=1e4,
                          emrounds, patterns,
                          gene_mappings, threads,
                          consensus=FALSE, annotation) {
@@ -81,24 +81,24 @@ infer_baySeq <- function(counts, conditions,
   cluster <- makeCluster(threads, "SOCK")
   # setup count data
   CD <- new("countData",
-            data=counts,
+            data=round(counts),
             replicates=conditions,
             groups=patterns)
   libsizes(CD) <- getLibsizes(CD)
   # setup annotation
-  annotation <- merge(x=data.frame(gene.id=rownames(counts)),
+  bs_annotation <- merge(x=data.frame(gene.id=rownames(counts)),
                       y=annotation,
                       by='gene.id')
-  annotation <- annotation[,-c('gene.id')]
-  CD@annotation <- annotation
+  bs_annotation <- bs_annotation[,-c('gene.id')]
+  CD@annotation <- bs_annotation
 
   CD <- getPriors.NB(CD,
-                     samplesize=1000,
+                     samplesize=samplesize,
                      estimation="QL",
                      cl=cluster,
                      consensus=consensus)
 
-  CD <- getLikelihoods.NB(CD, pET='BIC', cl=cluster)
+  CD <- getLikelihoods(CD, pET='BIC', cl=cluster)
 }
 
 #' Perform the differential expression experiment using EBSeq, automatically
