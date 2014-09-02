@@ -60,7 +60,7 @@ get_row_patterns <- function(CD, subset=TRUE, cutoff=NULL) {
                       maxidx <- which.max(exp(x))
                       names(x)[maxidx]
                   })
-  return(row_patterns[!is.na(row_patterns)])
+  return(row_patterns)
 }
 
 # get the posterior associated with the most likely pattern for each row
