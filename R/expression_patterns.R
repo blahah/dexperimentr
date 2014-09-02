@@ -68,21 +68,26 @@ output_pattern_sets <- function(de_data, conditions,
 }
 
 multiway_directional_patterns <- function(de_data, prob_cutoff) {
-  final <- de_data[['final']]
-  mean_cols <- de_data[['mean_cols']]
-  de_prob_cols <- de_data[['de_prob_cols']]
-  ee_prob_col <- de_data[['ee_prob_col']]
+  final <- de_data$final
+  mean_cols <- de_data$mean_cols
+  de_prob_cols <- de_data$de_prob_cols
+  ee_prob_col <- de_data$ee_prob_col
   prob_cols <- c(de_prob_cols, ee_prob_col)
-  patterns <- de_data[['results']]$AllParti
+  results <- de_data$results
+  if (class(results) == 'countData') {
+    patterns <- results@groups
+  } else {
+    patterns <- results$AllParti
+  }
   final$pattern <- "no significant pattern"
 
   for (pattern in prob_cols) {
-    pat_string <- paste(patterns[pattern,], collapse="_")
+    pat_string <- paste(patterns[[pattern]], collapse="_")
     print(paste("converting pattern", pat_string, "to directional"))
     pat_rows <- which(final[,pattern] >= prob_cutoff)
     if (length(pat_rows) == 0) next
     means <- final[pat_rows, mean_cols]
-    basic_pattern <- patterns[pattern,]
+    basic_pattern <- patterns[[pattern]]
     names(means) <- names(basic_pattern)
     all <- all_directional_patterns(basic_pattern)
     all.sorted <- lapply(all, sort)
@@ -91,11 +96,10 @@ multiway_directional_patterns <- function(de_data, prob_cutoff) {
         all(names(y) == names(sort(x)))
       })
       pat <- all[which(unlist(patrows))]
-      pat <- paste(unlist(pat), collapse="_")
-      if (pat == "") {
-        print("wtf")
+      patstr <- paste(unlist(pat), collapse="_")
+      if (patstr == "") {
       }
-      return(pat)
+      return(patstr)
     })
   }
   return(final$pattern)
