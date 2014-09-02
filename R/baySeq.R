@@ -44,35 +44,37 @@ learn_patterns <- function(CD, subset, samplesize=1000,
 # assign the most likely pattern to each row
 # optionally return only a subset of the rows
 get_row_patterns <- function(CD, subset=TRUE, cutoff=NULL) {
-  row_patterns <- apply(CD@posteriors[subset,],
-                    MARGIN=1,
-                    FUN=function(x) {
-                      if(all(is.na(x))) {
-                        # not in the subset
-                        return(NA)
-                      }
-                      posts <- exp(x)
-                      if (!is.null(cutoff) &&
-                          max(posts) < cutoff) {
-                        # probability below cutoff
-                        return("none")
-                      }
-                      maxidx <- which.max(exp(x))
-                      names(x)[maxidx]
-                  })
+  row_patterns <-
+    apply(CD@posteriors[subset,],
+      MARGIN=1,
+      FUN=function(x) {
+        if(all(is.na(x))) {
+          # not in the subset
+          return(NA)
+        }
+        posts <- exp(x)
+        if (!is.null(cutoff) &&
+            max(posts) < cutoff) {
+          # probability below cutoff
+          return("none")
+        }
+        maxidx <- which.max(exp(x))
+        names(x)[maxidx]
+    })
   return(row_patterns)
 }
 
 # get the posterior associated with the most likely pattern for each row
 # optionally return only a subset of the rows
 get_row_pattern_posts <- function(CD, subset=TRUE) {
-  row_pattern_posts <- apply(CD@posteriors[subset,],
-                        MARGIN=1,
-                        FUN=function(x) {
-                          if(all(is.na(x))) {
-                            return(NA)
-                          }
-                          max(exp(x))
-                        })
+  row_pattern_posts <-
+    apply(CD@posteriors[subset,],
+      MARGIN=1,
+      FUN=function(x) {
+        if(all(is.na(x))) {
+          return(NA)
+        }
+        max(exp(x))
+    })
   return(row_pattern_posts[!is.na(row_pattern_posts)])
 }
