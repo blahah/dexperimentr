@@ -21,19 +21,19 @@ generate_patterns <- function(conditions) {
 learn_patterns <- function(CD, subset, samplesize=1000,
                            cluster=NULL, consensus=TRUE,
                            posterior_cutoff=0.9, plot=TRUE) {
-  get_package("bayseq", bioconductor=TRUE)
+  get_package("baySeq", bioconductor=TRUE)
   CD <- getPriors.NB(CD,
                      samplesize=1000,
                      estimation="QL",
                      cl=cluster,
                      consensus=consensus)
-  
+
   # don't specify a distribution for getLikelihoods
   CD <- getLikelihoods(CD,
                        pET='BIC',
                        cl=cluster,
                        subset=subset)
-  
+
   # get best pattern for each row with posterior cutoff
   row_patterns <- get_row_patterns(CD, subset=subset, cutoff=posterior_cutoff)
   row_patterns <- row_patterns[row_patterns != 'none']
